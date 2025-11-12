@@ -8,3 +8,7 @@ Funcionalidad:
 - Es un bot simple y divertido basado en la tradición de Internet de ser el primero en comentar
 
 Este archivo guarda la idea para programar el bot más tarde.
+
+CAMBIOS PARA LA FUNCIONALIDAD
+
+Podemos hacer que el pole sea DIARIO, reset a las 12h, y si no es escribe pole a las 12, penalty (por pensar eso)
