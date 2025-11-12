@@ -1,0 +1,10 @@
+POLE BOT - Idea del Proyecto
+
+Pole Bot es un bot de Discord que consiste en escribir el primer mensaje en un canal o hilo.
+
+Funcionalidad:
+- El bot detecta cuando se crea un nuevo canal o hilo
+- Automáticamente escribe el primer mensaje (hace "pole")
+- Es un bot simple y divertido basado en la tradición de Internet de ser el primero en comentar
+
+Este archivo guarda la idea para programar el bot más tarde.
