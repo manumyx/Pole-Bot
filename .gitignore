@@ -1,0 +1,23 @@
+# Archivos de configuración sensibles
+.env
+
+# Archivos de base de datos
+data/
+*.db
+*.json.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -7,8 +7,138 @@ Funcionalidad:
 - Automáticamente escribe el primer mensaje (hace "pole")
 - Es un bot simple y divertido basado en la tradición de Internet de ser el primero en comentar
 
-Este archivo guarda la idea para programar el bot más tarde.
-
 CAMBIOS PARA LA FUNCIONALIDAD
 
 Podemos hacer que el pole sea DIARIO, reset a las 12h, y si no es escribe pole a las 12, penalty (por pensar eso)
+
+---
+
+## 🎨 REFINAMIENTO COMPLETO - v2.0 CON ESENCIA
+
+✅ **DISEÑO COMPLETADO** - Ver DESIGN.md para detalles completos
+
+### Mejoras Clave Implementadas:
+1. Sistema de Pole Crítica (25 pts) vs Normal (10 pts) vs Tardía (0 pts)
+2. Ventana de tiempo clarificada: primeros 30 minutos después de las 12h
+3. Penalties con warnings discretos (reacciones 🚫) - 3 strikes system
+4. Balance anti-lose/lose: conservas 20% al perder racha
+5. Rachas máximo 365 días (objetivo épico pero alcanzable)
+6. Sistema de rangos con emojis personalizados del bot
+7. Slash commands modernos (/leaderboard, /config, etc.)
+8. Personalidad y humor en todos los mensajes del bot
+9. Sistema de representación de servidor para rankings globales
+10. Eventos especiales, rivalidades, predicciones, etc.
+
+### Ideas Pendientes para Futuro:
+- Dashboard web opcional (Fase 4)
+- Sistema de equipos temporales
+- Más easter eggs y logros ocultos
+- Integración con otros bots de Discord
+- API pública para estadísticas
+- Modo torneo para competencias organizadas
+- Sistema de apuestas con puntos (jugar puntos en quién ganará)
+- Predicciones colaborativas (la comunidad vota quién ganará)
+- Cartas especiales/power-ups (freeze racha, doble puntos, etc.)
+- Misiones diarias/semanales para puntos extra
+- Sistema de trading de badges entre usuarios
+- Pole "privados" en hilos/threads específicos
+- Notificaciones push personalizadas fuera de Discord
+- Integración con Twitch para streamers
+- Sistema de mentores/aprendices
+- Logros colaborativos (todos en el servidor deben hacer pole 7 días seguidos)
+
+### Próximo Paso: IMPLEMENTACIÓN
+**Fase 1 (MVP):** Empezar con lo esencial funcional
+- Detección exacta de "pole"
+- Sistema de puntos balanceado
+- Rachas con protección anti-lose/lose
+- Warnings con reacciones
+- Notificaciones básicas
+
+---
+
+*Diseño con ESENCIA completado. Ready to code.* 🚀
+
+---
+
+## ✅ v2.1 Rework PENDIENTE (Puntos y Rachas)
+
+Decisiones a confirmar:
+- [ ] Ventana 00:00–08:00: ¿Se trata como Normal (10 pts) o creamos categoría "Madrugador" con otros puntos?
+- [ ] Redondeo de puntos con multiplicadores: ¿floor, ceil o banker's rounding?
+- [ ] Curva de racha hasta 2.5x: elegir Opción A (lineal), B (hitos) o C (suave).
+
+Tareas:
+- [ ] Actualizar lógica en `cogs/pole.py` con nuevas ventanas: Normal (08:00–12:00), Marranero (>=12:00), Crítico 2.0x
+- [ ] Añadir contador de "marraneros" en DB (`utils/database.py`)
+- [ ] Implementar multiplicador de racha con tope 2.5x (según opción elegida)
+- [ ] Exponer `/leaderboard` mostrando separador de marraneros vs normales
+- [ ] Añadir `/achievements` y pop-up embed al desbloquear
+- [ ] Crear `docs/ACHIEVEMENTS.md` (tras validar la lista)
+
+---
+
+## 🔔 Configuración de Ping de Apertura (Nuevo Requisito v1.0)
+
+Objetivo: permitir configurar qué rol se menciona cuando se abre el pole diario.
+
+Estados posibles:
+- `none` (no se menciona nada)
+- `role:<id>` (rol específico configurado)
+- `everyone` (usa @everyone, requiere confirmación)
+
+Flujo @everyone:
+1. Admin ejecuta `/poleping set everyone`
+2. Bot responde con advertencia: "¿Seguro? Puede ser spam." y requiere `/poleping confirm` dentro de 60s.
+3. Si confirma, se guarda.
+4. Si no, se cancela.
+
+Comandos plan:
+- `/poleping set <@rol|everyone|none>`
+- `/poleping show` (muestra configuración actual)
+- Integrar alternativa en `/config` con botón "Editar Ping".
+
+Persistencia:
+- Campo nuevo en configuración de servidor: `ping_mode` (none|role|everyone)
+- Campo `ping_role_id` (nullable)
+
+Pendiente:
+- [ ] Añadir sección técnica en DESIGN.md (hecha)
+- [ ] Implementar almacenamiento en `utils/database.py`
+- [ ] Crear comandos en `cogs/config.py` o nuevo `cogs/ping.py`
+- [ ] Añadir advertencia/confirmación para @everyone
+- [ ] Actualizar lógica de notificación (reset) para usar configuración
+- [ ] Añadir tests básicos de flujo (opcional más adelante)
+
+---
+
+## 🏆 Logros por Puntos Totales (Milestones) - Implementación
+
+Lista acordada (puede escalar si se adopta ×10):
+- 10   → El Comienzo
+- 100  → Persistente
+- 1,000 → Umbral Experto
+- 10,000 → Camino del Maestro
+- 100,000 → Maestro del Pole
+- 1,000,000 → Ascenso Divino
+- 10,000,000 → Nuevo Dios
+- 100,000,000 → Entidad Superior
+
+Tareas:
+- [ ] Definir estructura de logros en código (ID, nombre, puntos requeridos)
+- [ ] Agregar detección automática tras actualizar puntos
+- [ ] Registrar fecha de obtención
+- [ ] Mostrar rareza dinámica (calcular % jugadores que lo tienen)
+- [ ] Integrar en `/achievements` y `/profile`
+
+---
+
+## ⚙️ Escala de Puntos (Decisión Pendiente)
+
+Elegir Opción B (×10) o C (×100) para evitar decimales.
+
+Tareas condicionadas:
+- [ ] Si se elige ×10: actualizar bases (20→200, 11→110, 10→100, 7→70) en DESIGN.md y ejemplos
+- [ ] Ajustar acumuladores y cálculo de racha (mantiene 0.1x escalones sin decimales)
+- [ ] Revisar logros por puntos si necesitan reinterpretación visual
+- [ ] Añadir toggle de vista compacta vs precisa en `/leaderboard`
