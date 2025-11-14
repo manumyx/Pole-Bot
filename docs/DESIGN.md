@@ -1,5 +1,5 @@
 # 🎯 POLE BOT - DISEÑO DETALLADO DEL SISTEMA v1.0
-## *"Con esencia, humor y balance"*
+## *"7 palabras, E S E N C I A"*
 ## ⚠️ **FASE DE DESARROLLO - NO PUBLICADO**
 
 ---
@@ -101,7 +101,7 @@ Respuesta: Reacción 🚫 + Mensaje público breve + DM
 ```
 **Mensaje público:**
 ```
-😬 @Usuario, cuidado... Strike 2/3
+@Usuario twin 😭👩‍🦯 te regalo un segundo strike (2/3)
 ```
 
 **DM:**
@@ -121,7 +121,7 @@ Respuesta: Mensaje público + Suspensión temporal
 ```
 **Mensaje público:**
 ```
-🛑 @Usuario - Strike 3/3
+@Usuario a tomar por culo un rato anda (3/3)
 
 cuando estoy en una competencia de ser un empanao y mi oponente eres tu 👨‍🦯 
 nos vemos en 24 horas chat
@@ -457,7 +457,7 @@ preparad los dedos
 ```
 💎 POLE CRÍTICA
 
-@Usuario primer mensaje del día tío
+@Usuario primer mensaje del día tío felicidades
 ⏱️ 12:00:03
 
 💰 +20 pts | 🔥 racha: 12 días
@@ -670,15 +670,15 @@ El bot habla como un colega que te echa la bulla pero nunca se pasa. Directo, si
 
 **Cuando alguien llega tarde:**
 ```
-😴 @Usuario tío son las 3 de la tarde
+😴 @Usuario bro que son las 3 de la tarde
    @Winner ganó hace 3 horas ya te vale
-   mañana madruga más 🥱
+   espabila un poco
 ```
 
 ```
-🐌 @Usuario menuda tortuga
+🥸 @Usuario casi cuela
    @Winner te ha pasado por encima
-   ponte las pilas hermano
+   ponte las pilas gemelo
 ```
 
 **Cuando alguien hace pole perfecta (12:00:00 exactas):**
@@ -931,15 +931,15 @@ cómo has...? sabes qué da igual
 - 💎 **Inmortal** - 365 días consecutivos
 
 ### Logros Especiales (Difíciles)
-- 🌅 **Madrugador Extremo** - 10 poles en los primeros 2 segundos
+- 🌅 **Friki total** - 10 poles en los primeros 2 segundos
 - 🎯 **Precisión Láser** - 20 poles críticas seguidas
 - 🛡️ **Defensor Invicto** - 30 días seguidos en tu servidor
 - 💀 **Asesino de Récords** - Rompe 50 récords personales
-- 🌟 **Leyenda Viviente** - Top 3 global por 30 días
+- 🌟 **Leyenda** - Top 3 global por 30 días
 
 ### Logros Ocultos (No se muestran hasta conseguirlos)
 - 🦉 **Búho Nocturno** - Estar activo en Discord toda la noche hasta las 12h
-- 🎲 **Afortunado** - Ganar pole 3 veces siendo el último en intentarlo
+- 🎲 **Afortunado??** - Ser el ultimo en conseguir el pole por 3 días seguidos (sólo pole normal aplicable)
 - 👻 **Fantasma** - Ganar después de 30 días sin participar
 - 🔍 **Dataminer** - Descubrir y escribir el texto secreto oculto en el código (definido por admin)
 - 🎯 **Explorador** - Encontrar 3 easter eggs ocultos del bot
