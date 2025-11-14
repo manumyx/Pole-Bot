@@ -22,11 +22,11 @@
 - 💎 **Inmortal** - 365 días consecutivos
 
 ## Logros Especiales (Difíciles)
-- 🌅 **Madrugador Extremo** - 10 poles en los primeros 2 segundos
+- 🌅 **Friki total** - 10 poles en los primeros 2 segundos
 - 🎯 **Precisión Láser** - 20 poles críticas seguidas
 - 🛡️ **Defensor Invicto** - 30 días seguidos en tu servidor
 - 💀 **Asesino de Récords** - Rompe 50 récords personales
-- 🌟 **Leyenda Viviente** - Top 3 global por 30 días
+- 🌟 **Leyenda** - Top 3 global por 30 días
 
 ## Logros de Puntos Totales
 
@@ -59,7 +59,7 @@ Solo el 9.4% de los jugadores han llegado aquí.
 ## 🌚 Logros Ocultos (No se muestran hasta conseguirlos)
 
 - 🦉 **Búho Nocturno** - Estar activo en Discord toda la noche hasta las 12h
-- 🎲 **Afortunado** - Ganar pole 3 veces siendo el último en intentarlo
+- 🎲 **Afortunado??** -  Ser el último en conseguir el pole por 3 días seguidos (sólo pole normal aplicable)
 - 👻 **Fantasma** - Ganar después de 30 días sin participar
 - 🔍 **Dataminer** - Descubrir y escribir el texto secreto oculto en el código (definido por admin)
 - 🎯 **Explorador** - Encontrar 3 easter eggs ocultos del bot
