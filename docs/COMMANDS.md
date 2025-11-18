@@ -1,180 +1,344 @@
-# 📱 Comandos del Bot
+# 💬 Comandos del Pole Bot v1.0
 
-## Comandos de Usuario
+Lista completa de comandos disponibles organizados por categoría.
 
+---
+
+## 👤 Comandos de Usuario
+
+### `/profile [usuario]`
+Muestra las estadísticas de un usuario.
+
+**Parámetros:**
+- `usuario` (opcional): Usuario a consultar (por defecto: tú mismo)
+
+**Información mostrada:**
+- Puntos de temporada actual
+- Puntos lifetime (carrera completa)
+- Racha actual y mejor racha
+- Total de poles
+- Poles por categoría (Crítica, Veloz, Normal, Marranero)
+- Rango actual con badge
+- Servidor representado
+
+**Ejemplo de uso:**
 ```
-/pole                         # Info sobre el pole actual
-/stats [@usuario]             # Tus stats o las de otro
-/leaderboard [global/local]   # Ver ranking (con botones interactivos)
-/streak                       # Ver tu racha
-/achievements                 # Ver tus logros
-/profile [@usuario]           # Ver perfil completo
-/represent <servidor>         # Elegir servidor para ranking global
-/mytimezone <zona>            # Tu zona horaria personal
+/profile
+/profile usuario:@Shuu
 ```
 
-## Comandos de Admin
-
+**Salida:**
 ```
-/setpolechannel              # Configurar canal de pole
-/settimezone <zona>          # Zona del servidor
-/notify <opciones>           # Configurar notificaciones
-/poleping set <@rol|everyone|none>  # Configurar ping del reset
-/poleping show               # Ver ping configurado actual
-/warn @usuario <razón>       # Dar strike manual
-/forgive @usuario            # Perdonar strikes
-/timeout @usuario <horas>    # Suspensión temporal
-/config                      # Abrir panel de configuración
-/enableglobal <yes/no>       # Participar en ranking global
-```
+📊 Perfil de Shuu
 
-## Comandos de Información
+🏆 Temporada Actual
+💰 Puntos: 450.5 pts
+🥈 Rango: Plata Distinguida
 
-```
-/help                        # Ayuda general
-/rules                       # Reglas del pole
-/info                        # Info del sistema
+📈 Carrera Completa
+💎 Puntos totales: 1205.8 pts
+🏁 Total poles: 42
+
+🔥 Rachas
+⚡ Actual: 12 días (x1.2)
+🏆 Mejor: 25 días
+
+📊 Estadísticas
+🏆 Críticas: 5
+⚡ Veloces: 15
+🎯 Poles: 18
+🐷 Marraneros: 4
+
+🌐 Representación
+Servidor: Mi Comunidad
 ```
 
 ---
 
-## 🎮 /leaderboard - Sistema Interactivo
+### `/leaderboard [vista] [alcance] [temporada]`
+Muestra el ranking del servidor o global.
 
-### Vista Local (Servidor)
+**Parámetros:**
+- `vista`: `personas` (default) o `servers`
+- `alcance`: `local` (default) o `global`
+- `temporada`: Ver dropdown de temporadas disponibles
 
+**Opciones de Temporada:**
+- 🌟 **Lifetime** - Carrera completa (todas las temporadas)
+- 🔥 **Temporada Actual** - Temporada en curso
+- 📜 **Pre Season** - Temporada de prueba (si existe)
+- 📅 **Season 2024** - Temporadas finalizadas
+
+**Ejemplos:**
 ```
-🏆 LEADERBOARD - Los Insomnes 🏆
-
-1. 💪 @DarkPhoenix        1,450 pts | 🔥 23 días
-2. ⚔️ @SpeedRunner        890 pts  | 🔥 8 días
-3. 🛡️ @NightOwl           720 pts  | 🔥 15 días
-4. 🏃 @QuickFingers       580 pts  | 🔥 3 días
-5. ⚔️ @PoleHunter         510 pts  | 🔥 1 día
-
-[Botón: 🌍 Ver Global] [Botón: 📊 Filtros]
-```
-
-### Vista Global
-
-```
-🌍 LEADERBOARD GLOBAL 🌍
-
-1. 💎 @LegendaryUser     15,340 pts | 🌟 Servidor: Elite Gaming
-2. 💎 @PoleGod          14,120 pts | 🌟 Servidor: Night Crew
-3. 👑 @FastFingers      12,890 pts | 🌟 Servidor: Speed Demons
-4. 💪 @DarkPhoenix       8,450 pts | 🌟 Servidor: Los Insomnes
-5. 💪 @ChampionPole      7,920 pts | 🌟 Servidor: Pro Polers
-
-[Botón: 🏠 Ver Local] [Botón: 🎯 Ver tu Posición]
-
-Representas a: Los Insomnes
-Tu posición global: #47 de 2,341
+/leaderboard
+/leaderboard vista:personas alcance:global
+/leaderboard vista:servers alcance:local
+/leaderboard temporada:Season 2024
 ```
 
----
-
-## ⚙️ /config - Panel de Configuración Interactivo
-
+**Salida (Personas - Local):**
 ```
-⚙️ CONFIGURACIÓN DEL SERVIDOR ⚙️
+🏆 TOP 10 - Mi Servidor
+Temporada: Season 2025
 
-📍 Canal de Pole: #pole-diario
-🌍 Zona Horaria: Europe/Madrid (UTC+1)
-⏰ Hora de Reset: 12:00
+1. 💎 @Usuario1 — 2450.5 pts
+2. 🔮 @Usuario2 — 1680.2 pts
+3. 💎 @Usuario3 — 1120.0 pts
+4. 🥇 @Usuario4 — 890.5 pts
+...
+```
 
-🔔 Notificaciones:
-  └─ Reset: ✅ Activado (@Polers)
-  └─ Victoria: ✅ Activado
-  └─ Rachas perdidas: ❌ Desactivado
+**Salida (Servidores - Global):**
+```
+🌐 RANKING GLOBAL DE SERVIDORES
+Temporada: Lifetime
 
-🌐 Ranking Global: ✅ Participando
-📊 Privacidad: Público
-
-[Botón: ✏️ Editar Canal]
-[Botón: 🌍 Cambiar Timezone]
-[Botón: 🔔 Notificaciones]
-[Botón: 🌐 Configurar Global]
+1. 🥇 Comunidad Alpha — 15,420 pts (25 miembros)
+2. 🥈 Servidor Beta — 12,890 pts (18 miembros)
+3. 🥉 Guild Gamma — 10,350 pts (22 miembros)
+...
 ```
 
 ---
 
-## 🌍 Sistema de Zonas Horarias
+### `/polehelp`
+Tutorial interactivo sobre cómo usar el bot.
 
-### Configuración por Servidor
-```
-/settimezone Europe/Madrid
-/settimezone America/New_York
-/settimezone Asia/Tokyo
-```
+**Muestra:**
+- Cómo funciona el juego
+- Sistema de puntos
+- Rachas y multiplicadores
+- Comandos disponibles
+- Enlaces a documentación completa
 
-### Funcionamiento
-- Cada servidor tiene su propia zona horaria
-- El reset de pole se adapta a las 12h de ESA zona
-- Los usuarios ven timestamps en la zona del servidor (por defecto)
-
-### Zona Horaria Personal (Opcional)
+**Ejemplo:**
 ```
-/mytimezone America/Los_Angeles
+/polehelp
 ```
-- El bot te muestra las horas en TU zona horaria personal
-- Pero el reset sigue siendo según el servidor
-- Útil para usuarios en diferentes países
 
 ---
 
-## 🌐 Sistema de Representación de Servidor
+## ⚙️ Comandos de Administración
 
-Cada usuario puede elegir QUÉ servidor representa en el ranking global.
+### `/settings`
+Configuración interactiva del bot (solo administradores).
 
-### Comando
-```
-/represent
-```
+**Menú de Opciones:**
 
-**Respuesta del bot:**
-```
-🌍 REPRESENTACIÓN GLOBAL 🌍
+#### 1️⃣ Canal de Pole
+Establece el canal donde:
+- Se envían notificaciones de apertura
+- Se acepta la palabra "pole"
 
-Estás en varios servidores con Pole Bot:
-1. 🏠 Los Insomnes (250 pts aquí)
-2. 🎮 Gaming Zone (180 pts aquí)
-3. 💼 Work & Chill (90 pts aquí)
+**Cómo configurar:**
+1. Usa `/settings`
+2. Selecciona "📺 Canal de Pole" del menú
+3. Menciona el canal (ej: #pole-diario)
 
-¿Cuál quieres representar en el ranking global?
+#### 2️⃣ Rango Horario
+Define el rango de horas donde puede abrirse el pole.
 
-[Botón: Los Insomnes] [Botón: Gaming Zone] [Botón: Work & Chill]
+**Formato:** HH:MM - HH:MM (24h)
 
-Nota: Puedes cambiar esto cuando quieras
-```
+**Ejemplos:**
+- `12:00 - 20:00` → Entre mediodía y 8 PM
+- `08:00 - 23:00` → Entre 8 AM y 11 PM
+- `18:00 - 22:00` → Solo tarde-noche
 
-### Sistema de Lealtad
+**Cómo configurar:**
+1. Usa `/settings`
+2. Selecciona "🕐 Rango Horario"
+3. Ingresa formato: `HH:MM - HH:MM`
 
-**Bonus por Lealtad:**
-- Si representas el mismo servidor por 30 días: +50 pts
-- Si representas el mismo servidor por 90 días: +150 pts
-- Si representas el mismo servidor por 365 días: +500 pts + Badge "Leal"
+#### 3️⃣ Notificaciones
+Activa/desactiva notificaciones automáticas.
+
+**Opciones:**
+- **Apertura**: Notifica cuando se abre el pole
+- **Resumen**: Resumen diario a medianoche
+
+**Recomendación:** Mantener ambas activadas
+
+#### 4️⃣ Ping de Rol
+Configura qué ping usar en notificaciones.
+
+**Modos:**
+- **Sin ping**: Solo embed, sin menciones
+- **Rol específico**: Menciona un rol (ej: @Pole Hunters)
+- **@everyone**: Menciona a todos
+
+**Cómo configurar:**
+1. Usa `/settings`
+2. Selecciona "👥 Ping de Rol"
+3. Elige el modo
+4. Si elegiste "Rol específico", menciona el rol
+
+#### 📋 Ver Configuración
+Muestra la configuración actual del servidor.
+
+**Información:**
+- Canal configurado
+- Rango horario
+- Estado de notificaciones
+- Modo de ping
 
 ---
 
-## 🔔 Ping Configurable del Reset
+## 🛠️ Comandos de Debug (Desarrollo)
 
-### Modos Disponibles
+> **⚠️ Nota:** Estos comandos solo funcionan si `DEBUG=1` en `.env` y eres administrador.
 
-- `none` → No se menciona ningún rol
-- `role:<id>` → Se menciona un rol concreto configurado por admin
-- `everyone` → Se permite @everyone pero requiere confirmación
-
-### Comandos
+### `/debug badges`
+Muestra todos los rangos, badges y umbrales de puntos.
 
 ```
-/poleping set <@rol|everyone|none>
-/poleping show
+/debug badges
 ```
 
-### Flujo especial @everyone
+**Salida:**
+```
+🎖️ Rangos y Umbrales (DEBUG)
 
-1. Admin ejecuta `set everyone`
-2. Bot responde con advertencia: "⚠️ Usar @everyone puede generar spam. Confirma con /poleping confirm en 60s"
-3. Admin ejecuta `/poleping confirm`
-4. Se guarda configuración
-5. Expira confirmación si no se ejecuta a tiempo
+💎 Rubí — Rubí Maestro • ≥ 2000 pts
+🔮 Amatista — Amatista Élite • ≥ 1500 pts
+💎 Diamante — Diamante Supremo • ≥ 1000 pts
+🥇 Oro — Oro Imperial • ≥ 600 pts
+🥈 Plata — Plata Distinguida • ≥ 300 pts
+🥉 Bronce — Bronce Valiente • ≥ 100 pts
+```
+
+---
+
+### `/debug addpoints <usuario> <puntos> [alcance]`
+Añade puntos a un usuario manualmente (testing).
+
+**Parámetros:**
+- `usuario`: Usuario al que añadir puntos
+- `puntos`: Cantidad de puntos (puede ser decimal)
+- `alcance`: `lifetime`, `season`, o `both` (default: both)
+
+**Ejemplos:**
+```
+/debug addpoints usuario:@Shuu puntos:50.5
+/debug addpoints usuario:@Shuu puntos:100 alcance:season
+```
+
+**Salida:**
+```
+✅ Puntos añadidos a @Shuu
+
+🏆 Lifetime: +50.5 → 350.5 pts (calculado)
+📅 Season (season_2025): +50.5 → 150.5 pts
+```
+
+---
+
+### `/debug fakepole <usuario> [retraso] [categoria] [fecha]`
+Simula un pole en el pasado (testing de rachas).
+
+**Parámetros:**
+- `usuario`: Usuario para simular pole
+- `retraso`: Minutos de retraso (0-500, default: 5)
+- `categoria`: `critical`, `fast`, `normal`, `marranero`
+- `fecha`: Fecha del pole (YYYY-MM-DD, default: hoy)
+
+**Ejemplos:**
+```
+/debug fakepole usuario:@Shuu
+/debug fakepole usuario:@Shuu retraso:120 categoria:normal
+/debug fakepole usuario:@Shuu fecha:2024-12-01
+```
+
+**Útil para:**
+- Probar multiplicadores de racha
+- Simular historial de poles
+- Testing de migración de temporadas
+
+---
+
+### `/debug open_now`
+Abre el pole AHORA mismo (sin esperar hora configurada).
+
+```
+/debug open_now
+```
+
+**Acciones:**
+1. Establece hora actual como apertura
+2. Envía notificación al canal configurado
+3. Permite hacer pole inmediatamente
+
+**Salida:**
+```
+✅ ¡Pole abierto AHORA! (13:45:32)
+💬 Escribe pole en #pole-diario para probarlo.
+```
+
+---
+
+### `/debug reset_date [usuario]`
+Resetea `last_pole_date` y elimina poles de hoy (testing).
+
+**Parámetros:**
+- `usuario` (opcional): Usuario a resetear (default: tú mismo)
+
+**Acciones:**
+1. Resetea `last_pole_date` a `None`
+2. Elimina todos los poles de hoy del usuario
+3. Permite hacer pole nuevamente
+
+**Uso típico:**
+```
+1. /debug reset_date
+2. /debug open_now
+3. Escribe "pole"
+4. Repite para probar múltiples veces
+```
+
+**Salida:**
+```
+✅ Reseteado para @Shuu
+• last_pole_date → None
+• Poles eliminados hoy: 1
+💡 Ahora puedes hacer /debug open_now y volver a polear.
+```
+
+---
+
+## 📝 Notas sobre Comandos
+
+### Permisos
+- **Usuario**: Cualquiera puede usar comandos de usuario
+- **Administrador**: Se requiere permiso de Administrador para `/settings`
+- **Debug**: Se requiere `DEBUG=1` en .env y ser administrador/owner
+
+### Cooldowns
+- No hay cooldowns en comandos de consulta
+- Los comandos de debug no tienen límites (solo para testing)
+
+### Mensajes Efímeros
+Algunos comandos usan mensajes efímeros (solo tú los ves):
+- `/settings` → Solo el admin ve la configuración
+- `/debug` → Solo quien ejecuta ve el resultado
+- `/polehelp` → Solo quien pide ayuda la ve
+
+### Autocomplete
+Algunos parámetros tienen autocomplete inteligente:
+- `temporada` en `/leaderboard` → Muestra temporadas disponibles
+- `usuario` en comandos → Muestra miembros del servidor
+
+---
+
+## 🆘 Ayuda Adicional
+
+Si tienes problemas con algún comando:
+1. Verifica que el bot tenga permisos necesarios
+2. Consulta `/polehelp` para tutoriales
+3. Lee la documentación completa en `/docs`
+4. Contacta a un administrador del servidor
+
+---
+
+**Versión:** 1.0  
+**Última actualización:** Diciembre 2024

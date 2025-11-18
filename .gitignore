@@ -21,3 +21,4 @@ ENV/
 .idea/
 *.swp
 *.swo
+scripts/migrate_seasons.py

@@ -8,6 +8,32 @@ from discord.ext import commands
 class EventsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    def _pick_welcome_channel(self, guild: discord.Guild) -> discord.TextChannel | None:
+        # Prioriza canales cuyo nombre contiene 'general'
+        for ch in guild.text_channels:
+            if 'general' in ch.name.lower():
+                return ch
+        # Fallback a primer canal de texto
+        return guild.text_channels[0] if guild.text_channels else None
+
+    async def _send_onboarding_message(self, channel: discord.TextChannel, guild: discord.Guild):
+        """Enviar mensaje inicial explicando pasos de configuración."""
+        embed = discord.Embed(
+            title="🏁 Pole Bot listo para configurarse",
+            description=(
+                "Gracias por invitarme. Para que el sistema funcione debes hacer 2 pasos rápidos:\n"
+                "1️⃣ Usa **/settings** para configurar el canal de pole (donde se escribirá `pole`).\n"
+                "2️⃣ (Opcional) Configura rol a pingear, hora de reset y notificaciones con **/settings**.\n\n"
+                "Sin el canal configurado, los 'pole' se ignoran. Usa /polehelp para ver cómo jugar."
+            ),
+            color=discord.Color.blurple()
+        )
+        embed.set_footer(text="Debug: /debug welcome para repetir este mensaje")
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            pass
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -72,6 +98,13 @@ class EventsCog(commands.Cog):
                 await welcome_channel.send(embed=embed)
             except:
                 pass  # Si hay error, simplemente ignorar
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        """Enviado cuando el bot entra por primera vez a un servidor."""
+        ch = self._pick_welcome_channel(guild)
+        if ch:
+            await self._send_onboarding_message(ch, guild)
     
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):

@@ -1,170 +1,275 @@
-# 📋 Reglas del Pole Bot
+# 📜 Reglas del Pole Bot v1.0
 
-## ¿Qué es una Pole Válida?
-
-Un mensaje que contenga **SOLO** la palabra "pole" (case insensitive, sin espacios extra).
-
-**Ejemplos válidos:** 
-- `pole`, `Pole`, `POLE`, `PoLe`, `pOlE`
-
-**Ejemplos NO válidos:** 
-- `pole!`, `pole mañanera`, `hola pole`, `p o l e`, `pole `, ` pole`
+Documento oficial de las reglas del juego.
 
 ---
 
-## 🏁 Tipos de Pole y Ventanas Horarias
+## 🎯 Objetivo del Juego
 
-### ⚡ Regla Fundamental: **TODOS PUEDEN GANAR CADA DÍA**
-
-**Cada usuario** puede hacer su pole diario y mantener su racha. No hay límite de ganadores.
-
-**Pero el orden importa:**
-- **Primero** que escribe "pole" → Pole **Crítica** 💎 (20 pts directos)
-- **Segundo** que escribe "pole" → Pole **Secundón** 🥈 (11 pts fijos)
-- **Resto** → Pole Normal/Marranero según la hora
+Ser el más rápido en escribir **"pole"** cuando el bot anuncie la apertura diaria. Acumula puntos, mantén rachas y compite por el ranking de la temporada.
 
 ---
 
-### Categorías por Horario
+## 🕐 Funcionamiento Básico
 
-#### 1) Pole Crítica 💎 (SOLO el primero del día)
-- Usuario: El primer "pole" del día
-- Puntos base: **20 pts** (directo, sin multiplicadores)
-- Cuenta para racha: ✅ Sí
+### 1. Apertura Diaria
+- Cada día el bot genera una **hora aleatoria** de apertura
+- La hora está dentro del rango configurado por el servidor (ej: 12:00-20:00)
+- El bot garantiza al menos **4 horas** de diferencia con el día anterior
+- Se envía una **notificación automática** cuando se abre
 
-#### 2) Pole Secundón 🥈 (SOLO el segundo del día)
-- Usuario: El segundo "pole" del día
-- Puntos base: **11 pts** (fijo, sin importar la hora)
-- Cuenta para racha: ✅ Sí
+### 2. Cómo Participar
+1. Espera la notificación de apertura (embed verde con 🔔)
+2. Ve al canal configurado
+3. Escribe **exactamente** la palabra: `pole`
+4. ¡Recibirás tus puntos instantáneamente!
 
-#### 3) Pole Normal 🏁 (Tercero en adelante, antes de las 12:00)
-- Ventana: **08:00–12:00**
-- Puntos base: **10 pts**
-- Cuenta para racha: ✅ Sí
-
-#### 4) Pole Marranero 🐷 (Después de las 12:00)
-- Ventana: **≥ 12:00** (mediodía en adelante)
-- Puntos base: **7 pts**
-- Cuenta para racha: ✅ Sí
-- Se trackea con contador propio en estadísticas
+### 3. Validación
+- ✅ Palabra exacta: `pole` (minúsculas/mayúsculas no importan)
+- ❌ No válido: `pol`, `poles`, `mi pole`, `pole!`
+- ✅ Solo en el canal configurado
+- ✅ Solo después de la apertura
+- ✅ Una vez por día por usuario
 
 ---
 
-### Resumen de Puntos Base
+## ⚡ Sistema de Categorías
 
-| Posición | Nombre | Puntos Base |
-|----------|--------|-------------|
-| 1º | Crítica 💎 | **20 pts** |
-| 2º | Secundón 🥈 | **11 pts** |
-| 3º+ (08:00–12:00) | Normal 🏁 | **10 pts** |
-| 3º+ (≥12:00) | Marranero 🐷 | **7 pts** |
+Los puntos que ganas dependen de **qué tan rápido** respondas:
 
-**Nota:** El Secundón siempre vale 11 pts (sin importar si es antes o después de las 12h).
+| Categoría | Tiempo | Puntos Base | Cuota | Emoji |
+|-----------|--------|-------------|-------|-------|
+| **CRÍTICA** | 0-10 min | 20 pts | 10% del servidor | 🏆 |
+| **VELOZ** | 10 min-3h | 15 pts | 30% del servidor | ⚡ |
+| **POLE** | 3h-00:00 | 10 pts | Ilimitado | 🎯 |
+| **MARRANERO** | Después 00:00 | 5 pts | Ilimitado | 🐷 |
 
----
+### Sistema de Cuotas
+Las categorías premium tienen límites:
+- **Crítica**: Solo el 10% de los miembros del servidor puede reclamarla
+- **Veloz**: Solo el 30% puede reclamarla
 
-## ⚠️ Sistema de Penalties (Warnings Discretos)
+**Ejemplo:** En un servidor de 100 miembros:
+- Solo 10 personas pueden conseguir Crítica
+- Solo 30 pueden conseguir Veloz
+- El resto obtendrá Pole (normal)
 
-### Filosofía: 3 Strikes, You're Out (Temporalmente)
-
-El bot NO banea. Solo **pausa tu participación** temporalmente. Esto es un juego, no una prisión.
-
-### Sistema de Advertencias
-
-#### Strike 1: Advertencia Suave 🟡
-```
-Situación: Escribes "pole" antes de las 12h por primera vez
-Respuesta del bot: Reacción 🚫 en tu mensaje + DM privado
-```
-**DM que recibes:**
-```
-⚠️ Strike 1/3
-
-gemelo que no son ni las 12 mira el reloj 😭
-
-Strikes: 🟡⚪⚪
-```
-
-#### Strike 2: Advertencia Seria 🟠
-```
-Situación: Segunda infracción (cualquier tipo)
-Respuesta: Reacción 🚫 + Mensaje público breve + DM
-```
-**Mensaje público:**
-```
-😬 @Usuario, cuidado... Strike 2/3
-```
-
-**DM:**
-```
-⚠️ Strike 2/3
-
-tío que ya van 2 veces espabila un poco 🥀
-
-Strikes: 🟡🟠⚪
-Resets en: 7 días
-```
-
-#### Strike 3: Time-Out 🔴
-```
-Situación: Tercera infracción
-Respuesta: Mensaje público + Suspensión temporal
-```
-**Mensaje público:**
-```
-🛑 @Usuario - Strike 3/3
-
-cuando estoy en una competencia de ser un empanao y mi oponente eres tu 👨‍🦯 
-nos vemos en 24 horas chat
-```
-
-**Durante la suspensión:**
-- No puedes participar en pole por 24h
-- Tus mensajes de "pole" son ignorados (sin reacción)
-- Tu racha se CONGELA (no la pierdes aún)
-
-### Tipos de Infracciones
-
-1. **Pole Anticipada** (antes de las 12h) → Strike
-2. **Spam de Pole** (escribir "pole" 3+ veces en 1 minuto) → Strike directo
-3. **Intento durante suspensión** → +12h de suspensión adicional
-
-### Sistema de Rehabilitación 🔄
-
-- **Strikes reset:** Cada 7 días sin infracciones, -1 strike
-- **Suspensión cumplida:** Vuelves con strikes intactos (para no abusar)
-- **Mes limpio:** Borrado total del historial de strikes
-
-### Penalties Manuales (Admin)
-
-Los admins pueden:
-- `!warn @user <razón>` - Dar un strike manual
-- `!timeout @user <horas>` - Suspensión temporal custom
-- `!forgive @user` - Perdonar strikes
+Si llegas en 8 minutos pero ya hay 10 Críticas, se degrada automáticamente a Veloz.
 
 ---
 
-## 🔒 Prevención de Trampas
+## 🔥 Sistema de Rachas
 
-### Anti-Bot
-- Verificar que sean cuentas reales (edad mínima 7 días)
-- Flag si tiempo de respuesta es < 100ms constantemente
-- Requiere verificación manual del admin
+### ¿Qué es una Racha?
+Días **consecutivos** haciendo pole. Cada día que haces pole:
+- ✅ Tu racha aumenta en +1
+- 📈 Tu multiplicador de puntos aumenta
+- 🏆 Más puntos por cada pole
 
-### Anti-Spam
-- Cooldown de 1 segundo entre intentos
-- Después de 3 intentos en 10 segundos: warning
-- Spam extremo: strike automático
+### Multiplicadores Progresivos
 
-### Anti-Macro
-- Detectar patrones sospechosos (siempre exactamente a las 12:00:00)
-- Si 10+ poles perfectas seguidas: revisión manual
-- Admin puede marcar pole como "sospechosa"
+| Días | Multiplicador | Ejemplo (20 pts base) |
+|------|---------------|----------------------|
+| 1 día | x1.0 | 20.0 pts |
+| 7 días | x1.1 | 22.0 pts |
+| 14 días | x1.2 | 24.0 pts |
+| 30 días | x1.4 | 28.0 pts |
+| 60 días | x1.6 | 32.0 pts |
+| 90 días | x1.8 | 36.0 pts |
+| 180 días | x2.1 | 42.0 pts |
+| 300 días | x2.5 | **50.0 pts** |
+| 365 días | x2.5 | 50.0 pts (máximo) |
 
-### Sistema de Reportes
+### Cómo Perder tu Racha
+- ❌ No hacer pole un día completo
+- ❌ Se resetea a 0 y pierdes el multiplicador
+- ✅ Recibirás notificación en el resumen de medianoche
+
+### Protección de Racha
+- El sistema garantiza **4 horas mínimo** entre poles
+- Ejemplo: Si ayer abrió a las 23:00, hoy no abrirá antes de las 03:00
+- Esto te da tiempo suficiente para mantener tu racha
+
+---
+
+## 🚫 Restricciones
+
+### Una Pole por Día (Global)
+- Solo puedes hacer **una pole al día** en CUALQUIER servidor
+- Si ya hiciste pole en el servidor A, no podrás en el servidor B el mismo día
+- Esto previene spam y mantiene la competencia justa
+
+**Mensaje de error:**
 ```
-/report @usuario <razón>
+❌ Sólo puedes hacer una pole al día a nivel global.
+Ya hiciste pole hoy en: Servidor XYZ
 ```
-- Los usuarios pueden reportar comportamiento sospechoso
-- Admins revisan en panel de moderación
-- Historial de reportes guardado
+
+### Antes de Apertura
+Si escribes `pole` antes de la hora de apertura:
+- ⚠️ Se añade reacción de advertencia
+- 💬 Mensaje: "⏳ Aún no ha abierto. Espera al aviso."
+- ❌ No cuenta como pole
+
+### Duplicado en el Mismo Servidor
+Si escribes `pole` múltiples veces el mismo día en el mismo servidor:
+- 🔇 El bot ignora los intentos adicionales
+- ❌ No hay penalización
+- ℹ️ No se muestra mensaje (para no hacer spam)
+
+---
+
+## 🎖️ Rangos y Badges
+
+### Rangos por Puntos (Temporada Actual)
+Tu rango se determina por tus puntos en la temporada actual:
+
+| Rango | Badge | Puntos Necesarios |
+|-------|-------|-------------------|
+| Rubí Maestro | 💎 | 2000+ pts |
+| Amatista Élite | 🔮 | 1500+ pts |
+| Diamante Supremo | 💎 | 1000+ pts |
+| Oro Imperial | 🥇 | 600+ pts |
+| Plata Distinguida | 🥈 | 300+ pts |
+| Bronce Valiente | 🥉 | 100+ pts |
+
+### Badges de Temporada (Permanentes)
+Al finalizar una temporada, los Top 3 reciben badges permanentes:
+- 🥇 **1er Lugar**: Campeón de [Temporada]
+- 🥈 **2do Lugar**: Subcampeón de [Temporada]
+- 🥉 **3er Lugar**: Finalista de [Temporada]
+
+Estos badges se muestran en tu perfil para siempre.
+
+---
+
+## 🏆 Sistema de Temporadas
+
+### Duración
+- **1 año completo**: 1 de enero - 31 de diciembre
+- Migración automática a las 00:00 del 1 de enero
+
+### Al Finalizar una Temporada
+1. 📊 Se guardan las posiciones finales
+2. 🎖️ Se otorgan badges permanentes a Top 3
+3. 📜 Todo queda registrado en el historial
+4. 🔄 Se resetean puntos de temporada
+5. 🔥 Se resetean rachas a 0
+6. ✅ Estadísticas lifetime se mantienen
+
+### Tipos de Estadísticas
+- **Temporada Actual**: Puntos de la temporada en curso
+- **Lifetime (Carrera)**: Suma de todas las temporadas históricas
+- **Historial**: Consultar temporadas finalizadas
+
+---
+
+## 🌐 Multi-Servidor
+
+### Representación de Servidor
+- Al hacer tu primera pole global, automáticamente representas ese servidor
+- Tu elección es permanente
+- Tus puntos cuentan para el ranking global de ese servidor
+
+### Rankings
+- **Local**: Usuarios del servidor (sin importar a quién representen)
+- **Global**: Todos los usuarios del bot
+- **Servidores**: Competencia entre servidores (suma de puntos de representantes)
+
+---
+
+## 📅 Eventos Especiales
+
+### Resumen de Medianoche (00:00)
+Cada día a medianoche el bot envía un resumen:
+- 🏆 Quién ganó el pole del día anterior
+- 💔 Quién perdió su racha
+- 📢 Anuncia el nuevo día
+
+### Pole Marranero
+Si no conseguiste hacer pole antes de las 00:00:
+- 🐷 Puedes hacerlo después de medianoche
+- ⚠️ Solo obtienes 5 puntos base
+- ✅ Pero mantienes tu racha (no se pierde)
+- 📝 Cuenta como pole del día anterior
+
+---
+
+## ⚙️ Configuración del Servidor
+
+Solo administradores pueden configurar:
+
+### Comando `/settings`
+Menú interactivo con opciones:
+
+1. **📺 Canal de Pole**
+   - Canal donde se envían notificaciones
+   - Canal donde se acepta la palabra "pole"
+
+2. **🕐 Rango Horario**
+   - Hora mínima y máxima para apertura
+   - Ejemplo: 12:00 - 20:00
+
+3. **🔔 Notificaciones**
+   - Activar/desactivar notificación de apertura
+   - Activar/desactivar resumen de medianoche
+
+4. **👥 Ping de Rol**
+   - Sin ping / Ping a rol específico / @everyone
+   - Útil para asegurar que todos vean la apertura
+
+---
+
+## 🚨 Casos Especiales
+
+### Cambio de Hora del Servidor
+Si un admin cambia el rango horario:
+- ✅ Toma efecto al día siguiente
+- ℹ️ El pole del día actual mantiene su hora original
+
+### Bot Offline
+Si el bot estuvo offline durante la hora de apertura:
+- ⚠️ No se genera pole ese día
+- ❌ Los usuarios pierden su racha
+- 📝 Considera usar hosting confiable 24/7
+
+### Días sin Pole
+Si un servidor no tiene pole configurado:
+- ❌ Los usuarios de ese servidor no pueden participar
+- ℹ️ Pueden participar en otros servidores donde esté configurado
+
+---
+
+## ❓ Preguntas Frecuentes
+
+**¿Puedo cambiar de servidor representado?**
+- No, la elección es permanente al hacer tu primera pole global.
+
+**¿Qué pasa si pierdo un día?**
+- Pierdes tu racha y vuelve a 0. Debes empezar de nuevo.
+
+**¿Los puntos lifetime se resetean?**
+- No, solo se resetean los puntos de temporada. Lifetime es permanente.
+
+**¿Puedo hacer pole en múltiples servidores?**
+- Solo una pole al día en total, no importa en cuántos servidores estés.
+
+**¿Cómo sé mi ranking?**
+- Usa `/profile` para ver tus stats o `/leaderboard` para el ranking.
+
+**¿El pole marranero cuenta para la racha?**
+- Sí, pero solo otorga 5 puntos base.
+
+---
+
+## 📞 Soporte
+
+Si tienes dudas sobre las reglas, usa:
+- `/polehelp` - Tutorial interactivo
+- Contacta a un administrador del servidor
+- Reporta bugs en el repositorio de GitHub
+
+---
+
+**Versión:** 1.0  
+**Última actualización:** Diciembre 2024

@@ -1,152 +1,202 @@
-# 📚 Documentación del Pole Bot
+# 📚 Documentación Pole Bot v1.0
 
-Bienvenido a la documentación técnica del Pole Bot. Esta guía está organizada en módulos temáticos para facilitar la navegación y colaboración.
+Bienvenido a la documentación completa del **Pole Bot v1.0**. Aquí encontrarás toda la información sobre el funcionamiento, configuración y uso del bot.
+
+---
 
 ## 📖 Índice de Documentación
 
-### [DESIGN.md](DESIGN.md) - Documento Maestro
-Referencia técnica completa del proyecto. Contiene toda la información consolidada en un solo lugar para consulta técnica profunda.
+### 🎨 Diseño y Arquitectura
+- **[DESIGN.md](DESIGN.md)** - Arquitectura completa del sistema
+  - Sistema de hora aleatoria
+  - Base de datos y tablas
+  - Flujo de eventos y tasks
+  - Prevención de spam multi-servidor
 
-**Cuándo consultarlo:**
-- Necesitas una visión completa del sistema
-- Buscas detalles técnicos específicos de implementación
-- Quieres entender la arquitectura general
+### 💰 Sistema de Puntos
+- **[SCORING.md](SCORING.md)** - Sistema de puntuación detallado
+  - Categorías y puntos por velocidad
+  - Sistema de cuotas (10% crítica, 30% veloz)
+  - Multiplicadores de racha (x1.0 a x2.5)
+  - Cálculo de puntos finales
 
----
+### 📜 Reglas del Juego
+- **[RULES.md](RULES.md)** - Reglas oficiales del Pole Bot
+  - Cómo funciona el juego
+  - Restricciones y límites
+  - Rachas y cómo mantenerlas
+  - Penalizaciones y resets
 
-### [RULES.md](RULES.md) - Reglas y Validaciones
-Todo lo relacionado con las reglas del pole, validaciones y sistema de penalizaciones.
+### 🎖️ Logros y Badges
+- **[ACHIEVEMENTS.md](ACHIEVEMENTS.md)** - Sistema de logros
+  - Badges de temporada (Top 3 final)
+  - Rangos por puntos (Rubí, Diamante, Oro...)
+  - Logros especiales
+  - Cómo obtenerlos
 
-**Contenido:**
-- ✅ Validación de poles (horarios, condiciones)
-- 🏷️ Tipos de pole (Crítica, Secundón, Normal, Marranero)
-- ⚠️ Sistema de strikes (3 strikes progresivos)
-- 🛡️ Anti-trampas (anti-bot, anti-spam, anti-macros)
-- 💀 Penalizaciones y suspensiones temporales
+### 🏆 Sistema de Temporadas
+- **[SEASONS.md](SEASONS.md)** - Temporadas competitivas
+  - Ciclo anual (1 enero - 31 diciembre)
+  - Migración automática de temporadas
+  - Historial y estadísticas
+  - Leaderboards por temporada
 
-**Para desarrolladores:**
-- Implementar lógica de validación en `cogs/pole.py`
-- Gestión de strikes en base de datos
-- Detección de comportamiento sospechoso
+### 🔔 Notificaciones
+- **[NOTIFICATIONS.md](NOTIFICATIONS.md)** - Sistema de avisos
+  - Notificación de apertura
+  - Resumen de medianoche
+  - Pole marranero
+  - Configuración de pings
 
----
-
-### [SCORING.md](SCORING.md) - Sistema de Puntos
-Cálculo de puntos, rachas, multiplicadores y sistema de rangos.
-
-**Contenido:**
-- 💰 Puntos base por tipo de pole (20/11/10/7)
-- 🔥 Sistema de rachas (hasta 2.5× multiplicador)
-- 📊 Tabla de hitos de racha (1→365 días)
-- 🏆 Sistema de rangos (Novato → Inmortal)
-- 📈 Fórmula de puntos: `Base × Multiplicador`
-
-**Para desarrolladores:**
-- Implementar cálculo de puntos en `utils/scoring.py`
-- Gestión de rachas en base de datos
-- Sistema de progresión de rangos
-
----
-
-### [ACHIEVEMENTS.md](ACHIEVEMENTS.md) - Logros y Recompensas
-Todos los logros del bot: públicos, especiales y ocultos.
-
-**Contenido:**
-- 🎯 20+ logros públicos (El Imparable, Crítico en Serie, Vampiro...)
-- 🎁 Logros especiales por hitos (Centurión, Inmortal...)
-- 🤫 15 logros ocultos (EL NANO?????????, 4:20, 69, 404...)
-- 💬 Mensajes de desbloqueo personalizados
-- 📊 Sistema de rareza dinámico
-
-**Para desarrolladores:**
-- Implementar detección de logros en `utils/achievements.py`
-- Triggers de desbloqueo
-- Notificaciones de logros
+### 💬 Comandos
+- **[COMMANDS.md](COMMANDS.md)** - Lista completa de comandos
+  - Comandos de usuario
+  - Comandos de administración
+  - Comandos de debug (desarrollo)
 
 ---
 
-### [COMMANDS.md](COMMANDS.md) - Referencia de Comandos
-Lista completa de comandos slash, permisos y configuración.
+## 🚀 Inicio Rápido
 
-**Contenido:**
-- 👤 Comandos de usuario (`/pole`, `/stats`, `/leaderboard`)
-- 👑 Comandos de administrador (`/polereset`, `/polestrike`, `/poleping`)
-- ℹ️ Comandos de información (`/polehelp`, `/achievements`)
-- ⚙️ Panel de configuración del bot
-- 🔔 Sistema de notificaciones y menciones
+### Para Usuarios
+1. Espera la notificación de apertura del pole
+2. Escribe `pole` lo más rápido posible
+3. Gana puntos según tu velocidad
+4. Mantén tu racha haciendo pole diariamente
 
-**Para desarrolladores:**
-- Implementar comandos en `cogs/pole.py`
-- Sistema de permisos y roles
-- UI de leaderboards y embeds
-
----
-
-### [NOTIFICATIONS.md](NOTIFICATIONS.md) - Personalidad y Mensajes
-Tono del bot, notificaciones y easter eggs.
-
-**Contenido:**
-- 🎭 Personalidad del bot (tono directo, humor auténtico)
-- 🔔 Notificaciones de reset y victoria
-- 🎉 Mensajes especiales (récords, empates, rachas)
-- 🥚 Easter eggs y respuestas contextuales
-- ⚙️ Configuración de notificaciones
-
-**Para desarrolladores:**
-- Implementar mensajes en `utils/messages.py`
-- Sistema de respuestas dinámicas
-- Easter eggs condicionales
+### Para Administradores
+1. Usa `/settings` para configurar:
+   - Canal de pole
+   - Rango horario (ej: 12:00-20:00)
+   - Rol de ping (opcional)
+   - Notificaciones
+2. El bot generará una hora aleatoria cada día
+3. Los usuarios podrán competir automáticamente
 
 ---
 
-## 🔧 Guía Rápida por Rol
+## 📊 Conceptos Clave
 
-### Para Contribuidores Nuevos
-1. Lee [RULES.md](RULES.md) para entender la mecánica básica
-2. Revisa [SCORING.md](SCORING.md) para el sistema de puntos
-3. Consulta [COMMANDS.md](COMMANDS.md) para la interfaz de usuario
+### Hora Aleatoria
+El bot genera una hora diferente cada día dentro del rango configurado. Esto mantiene la competencia fresca y evita que los usuarios memoricen horarios.
 
-### Para Implementadores
-1. [DESIGN.md](DESIGN.md) → Arquitectura general
-2. [RULES.md](RULES.md) → Validaciones y lógica de negocio
-3. [SCORING.md](SCORING.md) → Fórmulas y cálculos
-4. [ACHIEVEMENTS.md](ACHIEVEMENTS.md) → Sistema de logros
-5. [NOTIFICATIONS.md](NOTIFICATIONS.md) → Mensajes y personalidad
+### Sistema de Cuotas
+Las categorías premium (Crítica y Veloz) tienen límites:
+- **Crítica**: Solo 10% del servidor puede reclamarla
+- **Veloz**: Solo 30% del servidor puede reclamarla
 
-### Para Diseñadores/Escritores
-1. [NOTIFICATIONS.md](NOTIFICATIONS.md) → Tono y personalidad
-2. [ACHIEVEMENTS.md](ACHIEVEMENTS.md) → Nombres y descripciones
-3. [COMMANDS.md](COMMANDS.md) → UI y embeds
+Si la cuota está llena, se degrada automáticamente a la siguiente categoría disponible.
 
----
+### Rachas
+Hacer pole **diariamente** aumenta tu racha y tu multiplicador de puntos. Perder un día resetea tu racha a 0.
 
-## 🚀 Estado del Proyecto
-
-**Versión Actual:** v1.0 (En desarrollo)  
-**Última Actualización:** Enero 2025
-
-### Componentes Completados
-- ✅ Diseño completo del sistema de puntos v1.0
-- ✅ Sistema de rachas y multiplicadores
-- ✅ 35+ logros diseñados (20 públicos + 15 ocultos)
-- ✅ Personalidad del bot definida
-- ✅ Sistema de strikes y penalizaciones
-
-### Pendiente de Implementación
-- ⏳ Comandos slash en Discord.py
-- ⏳ Base de datos SQLite
-- ⏳ Detección de logros
-- ⏳ Sistema de notificaciones configurables
-- ⏳ Leaderboard con paginación
+### Temporadas
+Cada año es una temporada competitiva. Al finalizar el año:
+- Se guardan posiciones finales
+- Se otorgan badges permanentes
+- Se resetean puntos de temporada
+- Se mantienen estadísticas lifetime
 
 ---
 
-## 📞 Contacto y Contribuciones
+## 🛠️ Configuración Técnica
 
-¿Tienes dudas sobre la documentación? Abre un issue en GitHub con la etiqueta `documentation`.
+### Variables de Entorno
+```env
+# Discord
+DISCORD_TOKEN=tu_token_aqui
+DISCORD_CLIENT_ID=tu_client_id
 
-¿Encontraste algo confuso o incompleto? Pull requests son bienvenidos.
+# Debug (opcional)
+DEBUG=0
+DEBUG_ALLOWLIST=123456789,987654321
+```
+
+### Base de Datos
+El bot usa SQLite3 con las siguientes tablas principales:
+- `users` - Datos de usuarios y rachas
+- `poles` - Historial de poles
+- `seasons` - Configuración de temporadas
+- `season_stats` - Estadísticas por temporada
+- `season_history` - Historial de temporadas finalizadas
+- `user_badges` - Badges permanentes ganados
+- `servers` - Configuración por servidor
+
+### Requisitos
+- Python 3.10+
+- discord.py 2.3.2+
+- SQLite3 (incluido en Python)
 
 ---
 
-**Volver al [README principal](../README.md)**
+## 🎮 Flujo del Juego
+
+```
+1. 🌅 Inicio del día
+   ↓
+2. 🎲 Bot genera hora aleatoria (margen mínimo 4h del día anterior)
+   ↓
+3. ⏰ Hora de apertura
+   ↓
+4. 🔔 Bot envía notificación de apertura
+   ↓
+5. 🏃 Usuarios escriben "pole"
+   ↓
+6. ⚡ Bot calcula velocidad y asigna categoría
+   ↓
+7. 🎯 Verifica cuotas y aplica multiplicador de racha
+   ↓
+8. 💰 Otorga puntos y actualiza estadísticas
+   ↓
+9. 🌙 Medianoche: Resumen del día
+   ↓
+10. 🔄 Ciclo se repite
+```
+
+---
+
+## 📝 Notas Importantes
+
+### Prevención de Spam
+- **Una pole por día** por usuario a nivel global
+- Si ya hiciste pole en otro servidor, no podrás en otro el mismo día
+- Esto mantiene la competencia justa y evita abuso
+
+### Margen Mínimo
+El sistema garantiza al menos **4 horas** entre la apertura de un día y el siguiente. Esto asegura que todos tengan tiempo suficiente para reclamar el pole anterior antes del siguiente.
+
+### Resumen de Medianoche
+A las 00:00 el bot envía un resumen automático:
+- Quién ganó el pole del día anterior
+- Quién perdió su racha
+- Anuncia el nuevo día
+
+### Migración de Temporadas
+El 1 de enero a las 00:00, el bot automáticamente:
+1. Finaliza la temporada anterior
+2. Guarda posiciones finales en historial
+3. Otorga badges a los Top 3
+4. Crea y activa la nueva temporada
+5. Resetea rachas pero mantiene estadísticas lifetime
+
+---
+
+## 🔧 Comandos Rápidos
+
+| Comando | Descripción |
+|---------|-------------|
+| `/profile` | Ver tus estadísticas |
+| `/leaderboard` | Rankings del servidor |
+| `/settings` | Configurar bot (admin) |
+| `/polehelp` | Ayuda y tutoriales |
+
+---
+
+## 📞 Soporte
+
+Si encuentras bugs o tienes sugerencias, abre un issue en el repositorio de GitHub.
+
+---
+
+**Versión:** 1.0  
+**Última actualización:** Diciembre 2024

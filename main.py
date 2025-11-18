@@ -34,6 +34,9 @@ class PoleBot(commands.Bot):
             'cogs.pole',
             'cogs.events'
         ]
+        # Cargar cog de depuración solo si DEBUG=1
+        if os.getenv('DEBUG', '0') in ('1', 'true', 'True'):
+            cogs_to_load.append('cogs.debug')
         
         for cog in cogs_to_load:
             try:
@@ -46,6 +49,14 @@ class PoleBot(commands.Bot):
         """Se ejecuta cuando el bot está listo y conectado"""
         print(f'🤖 Bot conectado como {self.user}')
         print(f'📊 Conectado a {len(self.guilds)} servidor(es)')
+        
+        # Sincronizar comandos slash
+        try:
+            synced = await self.tree.sync()
+            print(f'✅ {len(synced)} comandos slash sincronizados')
+        except Exception as e:
+            print(f'❌ Error sincronizando comandos: {e}')
+        
         print('✨ Pole Bot está listo!')
         
         # Sincronizar comandos slash (opcional, para comandos modernos)

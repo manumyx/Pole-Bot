@@ -1,6 +1,39 @@
 # 🏅 Sistema de Logros
 
-## Logros Básicos
+⚠️ **ATENCIÓN: SISTEMA NO IMPLEMENTADO** ⚠️
+
+Este documento contiene el diseño original del sistema de logros que **NO está implementado actualmente** en el bot.
+
+El sistema actual utiliza **Badges de Temporada** en lugar de logros individuales.
+
+---
+
+## 💎 Sistema Actual: Badges de Temporada
+
+El bot implementa un sistema de 6 niveles de badges basados en puntos de temporada:
+
+| Badge | Puntos Requeridos | Descripción |
+|-------|-------------------|-------------|
+| 🥉 Bronce | 0 pts | Participante |
+| 🥈 Plata | 500 pts | Constante |
+| 🥇 Oro | 1,500 pts | Dedicado |
+| 💎 Diamante | 3,500 pts | Experto |
+| 💜 Amatista | 6,000 pts | Élite |
+| ❤️ Rubí | 9,000 pts | Leyenda |
+
+**Ver más**: Consulta `SCORING.md` y `SEASON_MIGRATION.md` para detalles del sistema de temporadas.
+
+---
+
+## ⚠️ Lo que sigue son diseños NO IMPLEMENTADOS
+
+Todo lo que aparece a continuación es contenido de diseño que **no funciona actualmente** en el bot.
+
+Si deseas implementar el sistema de logros, este documento puede servir como referencia de diseño.
+
+---
+
+## Logros Básicos (NO IMPLEMENTADO)
 - 🏁 **Primera Sangre** - Tu primer pole
 - 🌟 **10 Poles** - Alcanza 10 poles totales
 - 💫 **50 Poles** - Alcanza 50 poles totales
@@ -46,7 +79,9 @@ Se desbloquean al alcanzar puntos acumulados. Nombres tentativos:
 **Nota:** Los porcentajes se calculan dinámicamente en producción:
 `porcentaje = jugadores_con_logro / jugadores_activos * 100`
 
-### Visualización
+**⚠️ SISTEMA NO IMPLEMENTADO - Los badges de temporada reemplazan este sistema**
+
+### Visualización (NO IMPLEMENTADO)
 
 ```
 🏆 LOGRO DESBLOQUEADO: "Maestro del Pole"
@@ -58,8 +93,6 @@ Solo el 9.4% de los jugadores han llegado aquí.
 
 ## 🌚 Logros Ocultos (No se muestran hasta conseguirlos)
 
-- 🦉 **Búho Nocturno** - Estar activo en Discord toda la noche hasta las 12h
-- 🎲 **Afortunado??** -  Ser el último en conseguir el pole por 3 días seguidos (sólo pole normal aplicable)
 - 👻 **Fantasma** - Ganar después de 30 días sin participar
 - 🔍 **Dataminer** - Descubrir y escribir el texto secreto oculto en el código (definido por admin)
 - 🎯 **Explorador** - Encontrar 3 easter eggs ocultos del bot
@@ -69,10 +102,7 @@ Solo el 9.4% de los jugadores han llegado aquí.
 - 🤡 **Payaso Oficial** - Perder 10 poles por intentarlo antes de las 12h (y seguir intentándolo)
 - ⚰️ **Muerto por Dentro** - Llegar segundo 20 veces (tan cerca y tan lejos tío)
 - 🐌 **Récord Mundial** - Ser el último en hacer pole del día 15 veces (premio al más lento)
-- 🎭 **Actor del Año** - Decir "no voy a intentarlo hoy" y ganarlo en los primeros 3 segundos
-- 🍕 **Gamer Auténtico** - Hacer pole exactamente a las 4:20 (ya sabes)
-- 👹 **Villano del Server** - Romper rachas de más de 30 días de otros 5 veces
-- 🎪 **Circo Completo** - Acumular 10 strikes en total (histórico)
+
 
 ---
 
@@ -104,7 +134,7 @@ pero hey al menos eres constante 💀
 ```
 🤡 @Usuario nuevo logro: Payaso Oficial
 
-10 strikes por intentarlo antes de las 12h
+
 y sigues aquí dándole
 
 no sé si eres valiente o directamente no aprendes
