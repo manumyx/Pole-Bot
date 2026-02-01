@@ -4,36 +4,66 @@ Como crear nuevos canales o hilos (por si quieres hacer pole automática)
 """
 import discord
 from discord.ext import commands
+from typing import Optional
 
 class EventsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def _pick_welcome_channel(self, guild: discord.Guild) -> discord.TextChannel | None:
+    def _pick_welcome_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
+        """Seleccionar canal para mensaje de bienvenida con verificación de permisos."""
         # Prioriza canales cuyo nombre contiene 'general'
         for ch in guild.text_channels:
             if 'general' in ch.name.lower():
+                # Verificar permisos de escritura
+                if ch.permissions_for(guild.me).send_messages:
+                    return ch
+        
+        # Fallback: buscar primer canal donde podamos escribir
+        for ch in guild.text_channels:
+            if ch.permissions_for(guild.me).send_messages:
                 return ch
-        # Fallback a primer canal de texto
-        return guild.text_channels[0] if guild.text_channels else None
+        
+        # Si no hay canales con permisos, devolver None
+        return None
 
     async def _send_onboarding_message(self, channel: discord.TextChannel, guild: discord.Guild):
         """Enviar mensaje inicial explicando pasos de configuración."""
         embed = discord.Embed(
-            title="🏁 Pole Bot listo para configurarse",
+            title="🏁 ¡Gracias por invitarme!",
             description=(
-                "Gracias por invitarme. Para que el sistema funcione debes hacer 2 pasos rápidos:\n"
-                "1️⃣ Usa **/settings** para configurar el canal de pole (donde se escribirá `pole`).\n"
-                "2️⃣ (Opcional) Configura rol a pingear, hora de reset y notificaciones con **/settings**.\n\n"
-                "Sin el canal configurado, los 'pole' se ignoran. Usa /polehelp para ver cómo jugar."
+                "Soy **Pole Bot**, tu asistente para competir por ser el más rápido cada día.\n\n"
+                "**Configuración rápida (2 pasos):**\n"
+                "1️⃣ Usa `/settings set_channel` para elegir el canal de pole\n"
+                "2️⃣ (Opcional) Configura notificaciones y rol con `/settings`\n\n"
+                "**¿Cómo funciona?**\n"
+                "• Cada día se abre el pole a una hora aleatoria\n"
+                "• El primero en escribir `pole` gana puntos\n"
+                "• Mantén rachas consecutivas para multiplicadores\n"
+                "• Compite localmente y globalmente\n\n"
+                "Usa `/rules` para ver las reglas completas. ¡Suerte! 🏁"
             ),
-            color=discord.Color.blurple()
+            color=discord.Color.gold()
         )
-        embed.set_footer(text="Debug: /debug welcome para repetir este mensaje")
+        embed.add_field(
+            name="⚙️ Comandos Útiles",
+            value=(
+                "`/settings` - Configurar el bot\n"
+                "`/rules` - Ver reglas del juego\n"
+                "`/profile` - Tu perfil de pole\n"
+                "`/leaderboard` - Rankings del servidor"
+            ),
+            inline=False
+        )
+        embed.set_footer(text="¡Que gane el más rápido! 🔥")
+        
         try:
             await channel.send(embed=embed)
-        except Exception:
-            pass
+            print(f"✅ Mensaje de bienvenida enviado a {guild.name} (#{channel.name})")
+        except discord.Forbidden:
+            print(f"⚠️ Sin permisos para enviar mensaje de bienvenida en {guild.name}")
+        except Exception as e:
+            print(f"❌ Error enviando mensaje de bienvenida en {guild.name}: {e}")
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -102,9 +132,24 @@ class EventsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
         """Enviado cuando el bot entra por primera vez a un servidor."""
+        print(f"🎉 Bot añadido a nuevo servidor: {guild.name} (ID: {guild.id})")
+        print(f"   Miembros: {guild.member_count} | Canales de texto: {len(guild.text_channels)}")
+        
+        # Seleccionar canal para mensaje de bienvenida
         ch = self._pick_welcome_channel(guild)
+        
         if ch:
+            print(f"   Canal seleccionado para bienvenida: #{ch.name}")
             await self._send_onboarding_message(ch, guild)
+        else:
+            print(f"⚠️ No se encontró ningún canal con permisos de escritura en {guild.name}")
+            print(f"   El bot necesita permisos 'Send Messages' en al menos un canal.")
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild):
+        """Enviado cuando el bot es expulsado de un servidor."""
+        print(f"🗑️ Bot removido del servidor: {guild.name} (ID: {guild.id})")
+        print(f"   📊 Datos históricos preservados en BD")
     
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):

@@ -1,4 +1,4 @@
-# 🏁 Pole Bot v1.0
+# 🏁 Pole Bot v2.0 - Pre-Año Nuevo Edition
 
 [![Discord](https://img.shields.io/badge/Discord-Bot-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
@@ -14,12 +14,27 @@ Bot de Discord que implementa competiciones diarias de **pole position** con hor
 
 ---
 
+## 🎆 NUEVO: POLE REWIND 🎬
+
+Cada Año Nuevo, el bot envía automáticamente el **POLE REWIND** - un resumen cinematográfico de la temporada que termina:
+
+- 🎊 **Felicitación personalizada** según temporada (especial para early adopters)
+- 🏆 **Hall of Fame Local** - Top 3 del servidor (Puntos, Poles, Rachas)
+- 🌍 **Hall of Fame Global** - Top 3 entre TODOS los servidores
+- 🚀 **Bienvenida a nueva temporada** con reset de stats
+- 📊 **Narrativa con carisma** - 5 mensajes secuenciales con delays
+
+El POLE REWIND se ejecuta automáticamente a las **00:00 del 1 de enero** tras la migración de temporada.
+
+---
+
 ## 🎯 Características Principales
 
 ### 🎲 Hora Aleatoria Diaria
 - El bot genera una **hora diferente cada día** (margen mínimo de 4 horas entre días)
 - Notificación automática cuando se abre el pole
 - Configuración por servidor con rango horario personalizable
+- **Jitter aleatorio** de ±30 minutos para reducir predictibilidad
 
 ### ⚡ Sistema de Puntos por Velocidad
 Cuanto más rápido respondas, más puntos ganas:
@@ -34,9 +49,11 @@ Multiplicadores por días consecutivos (hasta **x2.5** a los 300 días):
 
 ### 🏆 Sistema de Temporadas
 - **Temporadas anuales** con reset automático cada 1 de enero
+- **POLE REWIND** automático con estadísticas finales
 - Historial completo de temporadas finalizadas
 - Badges permanentes por posición final
 - Leaderboards por temporada (lifetime, actual, finalizadas)
+- **Sistema de migración robusto** con verificación de integridad
 
 ### 🎖️ Rangos y Badges
 Sistema de 6 rangos según puntos de temporada:
@@ -48,5 +65,6 @@ Sistema de 6 rangos según puntos de temporada:
 - **Una pole por día** a nivel global (previene spam)
 - Representación de servidor para competición entre comunidades
 - Rankings locales y globales
+- **Top 3 globales** en POLE REWIND de Año Nuevo
 
 ---

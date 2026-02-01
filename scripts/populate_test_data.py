@@ -96,6 +96,9 @@ def generate_random_poles(db: Database, guild_id: int, num_users: int, num_days:
             # Calcular puntos
             base, mult, total = calculate_points(pole_type, current_streak)
             
+            # Calcular pole_date (para marranero sería día anterior, pero aquí simulamos normal)
+            pole_date = current_date.strftime('%Y-%m-%d')
+            
             # Guardar pole
             db.save_pole(
                 user_id=user_id,
@@ -105,7 +108,8 @@ def generate_random_poles(db: Database, guild_id: int, num_users: int, num_days:
                 delay_minutes=delay,
                 pole_type=pole_type,
                 points_earned=total,
-                streak=current_streak
+                streak=current_streak,
+                pole_date=pole_date
             )
             
             # Actualizar usuario (sin total_points/total_poles - calculados desde seasons)

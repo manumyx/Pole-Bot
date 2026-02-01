@@ -1,10 +1,23 @@
-# 📚 Documentación Pole Bot v1.0
+# 📚 Documentación Pole Bot v2.0
 
-Bienvenido a la documentación completa del **Pole Bot v1.0**. Aquí encontrarás toda la información sobre el funcionamiento, configuración y uso del bot.
+Bienvenido a la documentación completa del **Pole Bot v2.0 - Pre-Año Nuevo Edition**. Aquí encontrarás toda la información sobre el funcionamiento, configuración y uso del bot.
 
 ---
 
 ## 📖 Índice de Documentación
+
+### 🎬 Nuevo en v2.0
+- **[POLE REWIND](../RELEASE_NOTES.md#pole-rewind-)** - Sistema de celebración de Año Nuevo
+  - Resumen automático de temporada
+  - Hall of Fame local y global
+  - Mensajes personalizados por temporada
+
+### 💾 Gestión de Datos
+- **[BACKUP_RESTORE.md](BACKUP_RESTORE.md)** - Sistema de copias de seguridad
+  - Comandos de backup y restauración
+  - Medidas de seguridad triple capa
+  - Plan de emergencia y rollback
+  - Workflow recomendado
 
 ### 🎨 Diseño y Arquitectura
 - **[DESIGN.md](DESIGN.md)** - Arquitectura completa del sistema
@@ -199,4 +212,4 @@ Si encuentras bugs o tienes sugerencias, abre un issue en el repositorio de GitH
 ---
 
 **Versión:** 1.0  
-**Última actualización:** Diciembre 2024
+**Última actualización:** Diciembre 2025

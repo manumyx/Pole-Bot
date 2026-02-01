@@ -1,577 +1,386 @@
-POLE BOT - Proyecto v1.0
+﻿# ====================================
+# TODO - POLE BOT
+# ====================================
 
-Bot de Discord que implementa un sistema de "pole position" diario con HORA ALEATORIA.
+## ✅ COMPLETADOS RECIENTEMENTE (Sesión actual)
 
-## 🎯 CONCEPTO v1.0
+### 🐛 CASO REAL CONFIRMADO - takusito perdió racha de 27 días (29 enero 2026)
+**Evidencia de la BD de producción (pole_bot_prod29012026.db):**
+- takusito (ID: 572416955961835520) estaba en 2 servidores:
+  - Server 1334277100290441357: racha=27 días, mejor=37 días ✅
+  - Server 808652680225488947: racha=1 día, mejor=1 día ❌
+- Al hacer pole en el segundo servidor, el bot creó entrada nueva con racha=1
+- Esto causó que "perdiera" su racha de 27 días del servidor principal
+- **ROOT CAUSE:** Rachas se guardaban por servidor en tabla `users(user_id, guild_id)`
+- **FIX:** Migración a `global_users` con MAX(rachas) consolidará ambas → 27 días preservado
 
-- **Sistema de hora aleatoria**: El bot genera una hora diferente cada día (configurable por servidor)
-- **Puntos por velocidad**: Los puntos se otorgan según cuánto tardas desde la apertura (no por orden)
-- **Notificación de apertura**: El bot avisa cuando se abre el pole
-- **Rachas progresivas**: Multiplicadores hasta 2.5x en 365 días
+### 🔥 MIGRACIÓN A RACHAS GLOBALES - COMPLETADO (29 enero 2026)
+- [x] **Arquitectura rediseñada: Rachas verdaderamente globales**
+  - Problema original: Rachas se guardaban POR SERVIDOR en tabla `users`
+  - Consecuencia: Usuario con racha de 28 días en ServerA → racha de 1 día en ServerB ❌
+  - Solución: Nueva tabla `global_users` con rachas compartidas entre todos los servidores
+  - Schema v4 → v5 con migración automática que consolida rachas (usa MAX de todos los servers)
+  - Archivos: utils/database.py (migración v5), cogs/pole.py (actualizado para usar global_users)
 
-## 🔥 ÚLTIMAS ACTUALIZACIONES (Diciembre 2024)
+- [x] **Migración de datos (Schema v5)**
+  - Creada tabla global_users(user_id PK, username, current_streak, best_streak, last_pole_date, represented_guild_id)
+  - Consolidación inteligente: MAX(current_streak) y MAX(best_streak) de todos los servidores por usuario
+  - Eliminadas columnas de rachas de tabla users (current_streak, best_streak, last_pole_date, represented_guild_id)
+  - Tabla users ahora solo contiene stats LOCALES (poles, velocidad, username)
+  - No hay pérdida de datos: se preserva el mejor valor de rachas de cada usuario
 
-### ✅ COMPLETADAS RECIENTEMENTE:
+- [x] **Métodos de base de datos actualizados**
+  - Nuevos: get_global_user(), create_global_user(), update_global_user(), get_or_create_global_user()
+  - Actualizados: get_global_leaderboard() ahora usa LEFT JOIN global_users para rachas
+  - Actualizados: get_represented_guild() y set_represented_guild() ahora usan global_users
+  - Archivo: utils/database.py líneas 640-680, 831-865, 893-920
 
-1. **Sistema de Strikes ELIMINADO** (Completo)
-   - ❌ Tabla `strikes` eliminada de BD
-   - ❌ Columnas `strikes`, `last_strike_date`, `suspension_until` eliminadas de `users`
-   - ❌ Lógica de strikes eliminada de pole.py
-   - ✅ Scripts de migración creados
-   - ✅ 14 archivos de documentación actualizados
-   - Ver: CHANGELOG_STRIKES_REMOVAL.md
+- [x] **Procesamiento de poles actualizado**
+  - process_pole() ahora obtiene user (local) Y global_user (rachas) por separado
+  - Rachas se leen desde global_user (línea 813-814)
+  - Rachas se guardan en update_global_user() (línea 842-847)
+  - Stats locales (contadores, velocidad) se siguen guardando en update_user()
+  - Archivo: cogs/pole.py líneas 803-870
 
-2. **Comando /stats → /profile** (Completo)
-   - ✅ Renombrado comando
-   - ✅ Corregido bug `best_streak` (era `max_streak`)
-   - ✅ Referencias actualizadas en docs
+- [x] **Comandos de display actualizados**
+  - /profile: Obtiene global_user y muestra rachas globales (líneas 1101-1103, 1154-1172)
+  - /leaderboard rachas local: Filtra usuarios del server, muestra sus rachas globales (líneas 1384-1452)
+  - /leaderboard rachas global: Ya usaba get_global_leaderboard() correctamente
+  - Footer en profile ahora muestra last_pole_date global (puede ser de cualquier server)
+  - Archivo: cogs/pole.py
 
-3. **Eliminada Ventana de Apertura de Settings** (Completo)
-   - ✅ Opción eliminada del menú
-   - ✅ Clase RangeModal eliminada
-   - ✅ Campo eliminado del embed
+- [x] **Sistema de reseteo de rachas actualizado**
+  - _reset_lost_streaks_before_opening(): Ahora consulta global_users y resetea con update_global_user()
+  - Marraneros ahora permiten recuperar desde CUALQUIER servidor (query sin guild_id)
+  - Archivo: cogs/pole.py líneas 2657-2726
 
-4. **Sistema de Margen Mínimo entre Poles** (Completo)
-   - ✅ Constante MIN_HOURS_BETWEEN_POLES = 4 horas
-   - ✅ Validación con 100 intentos
-   - ✅ Protege rachas evitando poles muy cercanos
+- [x] **Resumen de medianoche actualizado**
+  - send_midnight_summary(): Ahora obtiene rachas desde get_global_user() por cada usuario
+  - Mantiene las 3 categorías: ✅ Completaron / ⏳ En Peligro / 🌍 En Otro Server
+  - Archivo: cogs/pole.py líneas 2977-3008
 
-5. **Resumen Cambiado a Medianoche** (Completo)
-   - ✅ Task ejecuta a las 00:00-00:15 (antes 12:00)
-   - ✅ Muestra poles del día ANTERIOR
-   - ✅ Muestra rachas perdidas
-   - ✅ Anuncia nuevo día
+- [x] **Migración de temporadas actualizada**
+  - migrate_season(): Ahora resetea rachas en global_users en vez de users
+  - Cambio PASO 4: UPDATE global_users SET current_streak = 0
+  - Archivo: utils/database.py línea 1297
 
-6. **Refactorización: Totales Calculados Dinámicamente** (✅ COMPLETO)
-   - ✅ Columnas `total_points` y `total_poles` eliminadas de tabla `users`
-   - ✅ Totales ahora: SUM(season_stats.season_points/season_poles)
-   - ✅ Funciones actualizadas: get_user(), get_leaderboard(), get_global_leaderboard()
-   - ✅ Server leaderboards actualizados con JOIN
-   - ✅ Eliminadas actualizaciones redundantes en pole.py
-   - ✅ Comandos debug actualizados (/addpoints, /fakepole)
-   - ✅ Scripts de testing actualizados
-   - ✅ Script de migración creado: migrate_remove_total_columns.py
-   - ✅ Índice idx_users_points eliminado
-   - Ver: CHANGELOG_REMOVE_TOTALS.md
-   - **IMPORTANTE:** Ejecutar script de migración en BDs existentes
+**IMPACTO:**
+✅ Rachas ahora persisten entre servidores (como debe ser)
+✅ Usuarios no pierden rachas por polear en diferentes servers
+✅ /profile muestra racha global real
+✅ /leaderboard rachas ahora tiene sentido en contexto local y global
+✅ Migración preserva mejor racha de cada usuario (sin pérdida de datos)
+✅ Sistema más consistente y lógico
+
+**PRÓXIMOS PASOS:**
+- [ ] Testear migración en copia de producción
+- [ ] Verificar que todos los paths usan global_user correctamente
+- [ ] Deployment con backup previo
+
+### 🐛 BUG CRÍTICO: RACHA GLOBAL RESETEADA - RESUELTO (29 enero 2026)
+- [x] **Bug crítico en sistema de reseteo de rachas**
+  - Problema 1: _check_and_reset_lost_streaks() verificaba pole LOCAL en vez de GLOBAL
+  - Escenario: Usuario hace pole en ServerA → Se abre pole en ServerB → Resetea racha ❌
+  - Ejemplo real: Taku hizo pole en "ONLYFACTS <3", se abrió pole en tu server → racha a 0
+  - Solución: Cambiar query para verificar poles globalmente (eliminar guild_id del WHERE)
+  - Archivo: cogs/pole.py líneas 2662-2682
+
+- [x] **Sistema de validación de poles**
+  - Lógica correcta mantenida: 1 pole por día globalmente
+  - Los marraneros verifican la fecha efectiva (ayer) en la validación global
+  - Si ya hiciste pole ayer en otro servidor → NO puedes hacer marranero
+  - Marranero es SOLO para recuperar días que NO poleaste, no para duplicar
+
+- [x] **Mejora UX: Resumen diario confuso**
+  - Problema 3: Resumen solo mostraba "Racha en Peligro" para todos los que no polearon aquí
+  - Confusión: Usuarios que SÍ polearon en otro server aparecían como "en peligro"
+  - Solución: Nueva categoría "🌍 Polearon en Otro Servidor" en resumen diario
+  - Archivo: cogs/pole.py función send_midnight_summary (líneas 2970-3020)
+  - Ahora muestra 3 categorías: ✅ Completaron / ⏳ En Peligro / 🌍 En Otro Server
+  - Mensaje claro: "Racha activa, pero ya cumplieron ayer" (no pueden hacer marranero)
+
+**ACLARACIÓN IMPORTANTE:**
+- ❌ NO se permiten marraneros si ya hiciste pole ayer (en cualquier servidor)
+- ✅ Marranero = SOLO para recuperar días perdidos, no duplicar poles
+- ✅ Regla: 1 pole por día (periodo 24h desde apertura) → sin excepciones
+- ✅ Rachas se calculan globalmente, reseteos también son globales
+
+### 🐛 BUG CRÍTICO: WATCHER RESETEABA RACHAS INESPERADAMENTE - RESUELTO (29 enero 2026)
+- [x] **Bug en opening_notification_watcher - Reset incorrecto tras lag**
+  - **ROOT CAUSE:** Watcher llamaba _reset_lost_streaks_before_opening() cuando notificación llegaba tarde
+  - **Escenario:** Bot lag a las 14:00 → usuarios polearon a las 10:00 → watcher ejecuta reset → busca poles de AYER → no encuentra → resetea rachas de HOY ❌
+  - **Consecuencia:** "mi amigo se le ha reseteado la racha derrepente sin aviso alguno"
+  - **Problema fundamental:** Reset function verificaba yesterday's poles, no today's poles
+  - **Timing del bug:** Solo ocurría cuando bot tenía outage/lag y notificación llegaba DESPUÉS de que usuarios ya polearon
+
+- [x] **Fixes implementados (2 ubicaciones)**
+  - **Fix 1 - Línea 2852 (late notification path):**
+    * ANTES: `await self._reset_lost_streaks_before_opening()` + `send_notification()`
+    * DESPUÉS: Solo `send_notification()`, SIN reset
+    * RAZÓN: Usuarios ya polearon hoy, reset es incorrecto en este punto
+    * Archivo: cogs/pole.py línea 2852
+  
+  - **Fix 2 - Línea 377 (recovery notification path):**
+    * ANTES: `await self._reset_lost_streaks_before_opening()` siempre
+    * DESPUÉS: Solo resetea si `minutes_since_opening < 30`
+    * RAZÓN: Si ya pasaron horas, usuarios pudieron polear sin notificación
+    * Archivo: cogs/pole.py línea 377
+
+- [x] **Testing y verificación**
+  - Código compilado exitosamente (python -m py_compile)
+  - Lógica verificada: Watcher ahora SOLO notifica, NO resetea rachas
+  - Reset solo ocurre en apertura normal (daily_pole_generator) o recovery muy reciente (<30 min)
+
+**IMPACTO:**
+✅ Ya no se resetearán rachas inesperadamente tras lag del bot
+✅ Watcher ahora cumple su propósito: notificar, no modificar estado
+✅ Rachas solo se resetean en momentos apropiados (opening time o recovery inmediata)
+✅ Fix previene el "derrepente sin aviso" reportado por usuario
+
+### 🐛 BUG MARRANERO - RESUELTO (15 enero 2026)
+- [x] **Bug crítico en validación de pole marranero**
+  - Problema: Límite hardcodeado de 8 AM impedía marraneros válidos
+  - Ejemplo: Pole abrió ayer a 19:00, hoy son 10:00 → rechazaba "aún no toca" ❌
+  - Solución: Ventana marranero ahora es desde apertura de ayer hasta apertura de hoy
+  - Eliminado MARRANERO_LIMIT_HOUR = 8 (lógica incorrecta)
+  - Archivo: cogs/pole.py líneas 651-704
+  - **Impacto:** Ya no se perderán rachas por intentos de marranero legítimos
+
+### 🚨 CRISIS DE MIGRACIÓN AÑO NUEVO 2026 - RESUELTA (2 enero 2026)
+- [x] **Bug crítico en get_current_season()** - Dependencia circular con BD
+  - Problema: Función consultaba BD first → si migración falla, BD nunca se actualiza
+  - Solución: Reescrita para calcular por año SIEMPRE (2025=preseason, 2026=season_1)
+  - Archivo: utils/scoring.py líneas 315-385
+  
+- [x] **Bug en get_season_info() fallback** - Devolvía basura en vez de error
+  - Problema: Fallback aceptaba cualquier string y devolvía fechas de 2025 hardcodeadas
+  - Solución: Ahora detecta años numéricos (2026→season_1) y lanza ValueError si inválido
+  - Mejora: Nombres "Temporada 2026" en vez de "Temporada 1" (más claro)
+  
+- [x] **Temporada corrupta "Temporada 2026" eliminada**
+  - Creada por test_migration con target_season="2026" (debía ser "season_1")
+  - Tenía fechas incorrectas 2025-01-01 → 2025-12-31 (debía ser 2026)
+  - Eliminada junto con 16 registros de season_stats
+  
+- [x] **Datos de enero 2026 recuperados**
+  - 27 poles de 16 usuarios (1-2 enero) restaurados desde tabla poles
+  - season_stats regeneradas correctamente para season_1
+  - 420 puntos totales recuperados
+  
+- [x] **Rachas reseteadas tras cambio de temporada**
+  - 19 usuarios con current_streak > 0 reseteados a 0
+  - Simula comportamiento de migración automática que debió ejecutarse
+  
+- [x] **Comando /debug fix_season_state creado**
+  - Reparación de emergencia para estados corruptos de temporadas
+  - Detecta temporada correcta por año, crea si no existe, activa/desactiva correctamente
+  - Verificación de integridad incluida
+  
+- [x] **Validación mejorada en /debug test_migration**
+  - Ahora normaliza años numéricos a season_N automáticamente (2026→season_1)
+  - Valida season_id antes de ejecutar migración
+  - Previene creación de temporadas con IDs/fechas incorrectas
+
+### Bugs Críticos Corregidos
+- [x] save_pole() sin pole_date en simulate_pole - Añadido cálculo de fecha efectiva
+- [x] save_pole() sin pole_date en populate_test_data - Añadido parámetro
+- [x] get_total_active_users() inexacto - Ahora cuenta desde tabla poles
+- [x] set_daily_pole_time() sin validación - Auto-init si guild no existe
+- [x] Sistema de versiones de schema - Añadida tabla schema_metadata + tracking
+- [x] Foreign keys deshabilitadas - Ahora PRAGMA foreign_keys = ON
+- [x] Migraciones duplicadas eliminadas - Todo en _run_migrations() versionado
+- [x] Bug: apertura fija 04:59am - Corregido scheduler + last_daily_pole_time
+- [x] Jitter aleatorio en generación de hora - ±30min para reducir predictibilidad
+- [x] Estado del bot inexacto - Ahora muestra jugadores activos reales
+
+### Sistema de Health Check Extendido
+- [x] Check/fix: Polos sin season_stats
+- [x] Check/fix: Contadores de tipo desactualizados
+- [x] Check/fix: Last_pole_date inconsistente
+- [x] Check/fix: Season_best_streak inconsistente
+- [x] Check/fix: Polos sin guild en servers
+- [x] Excluir bots del conteo de miembros - Ya implementado en process_pole línea 750
+
+### UX/UI
+- [x] Servidor representado no aparece en /settings - Añadido campo en embed
+
+### Sistema de Limpieza Automática
+- [x] Evento on_guild_remove para desactivar servidores - Limpia config al ser expulsado
+- [x] Validación en generador diario - Salta servidores donde bot no está presente
+
+## 🔧 PENDIENTES PRIORITARIOS
+
+### 🚨 CRÍTICOS PRE-AÑO NUEVO (antes del 1 de enero 2026)
+- [x] **Sistema de notificaciones tras downtime** 
+  - Bug: Al reiniciar bot después de hora de apertura, no se envía notificación
+  - Arreglado: Watcher ahora envía notificación aunque ya haya poles
+  - Enviará ping si el bot se reinicia dentro de 60min tras apertura
+  
+- [x] **Revisar y optimizar sistema de migraciones de temporada**
+  - ⚠️ **FALLÓ EN PRODUCCIÓN** (1 enero 2026 00:00) - Bot offline/crash
+  - Circular dependency en get_current_season() impedía detección de cambio
+  - Arreglado completamente (2 enero 2026) - Ver crisis resuelta arriba
+  - **LECCIÓN:** Testear migración automática con bot reiniciado en 31/12 23:59
+  
+- [x] **Comandos de Backup/Restore de BD**
+  - /debug backup_db - Crea backup timestamped
+  - /debug list_backups - Lista backups disponibles
+  - /debug restore_db - Restaura con confirmación y doble seguridad
+  - Pre-restore backup automático + integrity check + rollback si falla
+  
+- [x] **Checklist de Testing Post-Deployment**
+  - TESTING_CHECKLIST.md creado
+  - Cubre: inicio, comandos, poles, notificaciones, migración, POLE REWIND
+  - Incluye plan de contingencia y sign-off final
+
+- [x] **POLE REWIND Rediseñado (v2.0 → v2.1)**
+  - 11 mensajes → 7 mensajes (1 intro + 4 local + 1 global condensado + 1 cierre)
+  - Dedicatorias únicas para cada categoría y posición (locales)
+  - Filtro anti-outliers: mínimo 10 poles para Top 3 Velocidad
+  - Filtro de calidad: mínimo rango Plata (500+ puntos) para TODAS las categorías
+  - Global condensado en 1 mensaje con 4 categorías (Puntos, Poles, Rachas, Velocidad)
+  - 4 funciones de dedicatorias locales (las globales eliminadas al condensar)
+  
+- [x] **Stat secreta: impatient_attempts**
+  - Columna añadida a tabla users
+  - Migración v3 → v4 implementada
+  - Incrementa +1 cuando usuario intenta pole:
+    * Antes de hora de apertura
+    * Ya hizo pole hoy en el servidor
+    * Ya hizo pole en otro servidor
+  - Stat NO visible en /profile (solo para POLE REWIND futuro)
+  - Preparado para categoría "El Impaciente" en 2026+
+  
+- [ ] **Testing completo de migración en bot de prueba**
+  - Crear bot de prueba con mismo código
+  - Poblar datos ficticios con populate_test_data.py
+  - Ejecutar /debug test_migration dry_run:True
+  - Ejecutar migración real y verificar integridad
+  - Validar que todo funciona ANTES del 1 de enero
+  - ⚠️ **IMPORTANTE PARA 2026→2027:** Asegurar bot online el 31/12 23:50+
+  
+- [x] **Mensaje automático de Año Nuevo + Estadísticas de Temporada - POLE REWIND 🎬**
+  - Sistema completo con 5 mensajes secuenciales
+  - Detección automática de primera temporada (early adopters)
+  - Mensaje 1: Felicitación personalizada (especial para 2025→2026)
+  - Mensaje 2: Introducción "POLE REWIND {year}"
+  - Mensaje 3: Hall of Fame Local (Top 3 Puntos, Poles, Rachas)
+  - Mensaje 4: Hall of Fame Global (Top 3 agregados de todos los servidores)
+  - Mensaje 5: Bienvenida a nueva temporada con info y avisos
+  - Narrativa con carisma y delays entre mensajes
+  - Se ejecuta automáticamente tras migrate_season() a las 00:00
+  - ⚠️ **NO SE EJECUTÓ EN 2025→2026** (bot offline/migración falló)
+  
+- [x] **Cambiar texto de status del bot**
+  - De: "pole con X jugadores"
+  - A: "poleando con X jugadores"
+
+## 🔧 PENDIENTES PRIORITARIOS (Post Año Nuevo)
+
+### 📝 Testing Pre-Año Nuevo 2027
+- [ ] **Checklist 31 de diciembre 2026 (para 2027):**
+  - Asegurar bot ONLINE desde 23:00 del 31/12/2026
+  - No reiniciar bot entre 23:00 y 00:05
+  - Monitorizar logs a las 00:00 para verificar migración
+  - Verificar POLE REWIND enviado correctamente
+  - Backup manual de BD antes de medianoche
+  - Plan B: /debug fix_season_state si falla automático
+
+### UX/UI - Onboarding
+- [ ] **Mejorar mensaje de bienvenida al añadir bot a servidor**
+  - Mensaje actual: Existe pero es básico
+  - Mejora: Tono más carismático y directo
+  - Incluir: Paso a paso claro (1. /settings, 2. configurar canal, 3. opcional: rol ping)
+  - Mencionar /rules para entender el juego
+  - Añadir tips: Hora aleatoria diaria, rachas, sistema de puntos
+  - Emoji y formato atractivo
+  - Archivo: `cogs/events.py` → `_send_onboarding_message()`
+
+### Mejoras para Temporada 2026
+- [ ] **Categoría "El Impaciente" en POLE REWIND**
+  - ✅ Stat secreta `impatient_attempts` YA IMPLEMENTADA
+  - ✅ Incremento automático en 3 casos (antes de hora, duplicado local, duplicado global)
+  - ✅ Columna en BD + migración v4 completa
+  - ⏳ Pendiente: Añadir al POLE REWIND como 5ª categoría local
+  - Mostrar Top 3 con más impatient_attempts (solo local)
+  - Filtro: mínimo rango Plata (500+ puntos)
+  - Dedicatorias únicas con tono vacilón
+  - Solo aparecer si hay datos significativos
+  - Texto ejemplo: "🚨 Los Más Impacientes - Los que no saben esperar"
+
+## 📋 POST-FIXES ORIGINALES
+
+- [x] Quitar los emoji de fuego (custom) de los diálogos que no tocan - GRAY_FIRE cuando racha=0/inactiva
+- [x] Retraso: horas y minutos en vez de solo minutos 
+- [ ] Traducción al inglés
+- [x] Comando para ver las rachas del servidor → /leaderboard tipo:Rachas
+- [ ] Meter más emojis (para el icono de los puntos, etc)
+- [x] EL POLE MARRANERO NO FUNCIONA → Corregido
+- [x] Cambiar el comando de las rachas para ver las del server → /leaderboard tipo:Rachas
+- [x] MEJORAR EL MENSAJE DE LAS 12AM → Ahora muestra "racha en peligro"
+- [x] Al hacer pole de nuevo en el mismo server → "Ya hiciste tu pole hoy aquí"
+- [x] MEJORAR DIÁLOGOS → Tono vacilón aplicado
+- [x] Utilidad para checkear la base de datos → scripts/db_health_check.py + /debug db_check
+- [x] Checker de poles para downtimes → Failsafe + opening_notification_watcher
+- [x] Interactividad con menciones al bot → Responde a @bot + palabras clave
+
+## 🔮 FUTURO / MEJORAS MENORES
+
+### Sistema de Internacionalización (i18n) - POST AÑO NUEVO
+- [ ] **FASE 1: Infraestructura (2 horas)**
+  - Crear directorio `i18n/` con `es.json` y `en.json`
+  - Añadir columna `language TEXT DEFAULT 'es'` en tabla `servers`
+  - Añadir métodos `get_server_language()` y `set_server_language()` en Database
+  - Crear `utils/i18n.py` con `load_translations()` y `get_text(key, guild_id, **kwargs)`
+  
+- [ ] **FASE 2: Extracción de strings (3-4 horas)**
+  - Identificar TODOS los strings hardcoded en:
+    * `cogs/pole.py` - Mensajes de pole, embeds, errores
+    * `cogs/events.py` - Respuestas a menciones
+    * `main.py` - Mensajes de inicio/status
+  - Crear estructura JSON jerárquica (profile.title, pole.critical, etc.)
+  - Excluir: `cogs/debug.py` (solo desarrollo, no traducir)
+  
+- [ ] **FASE 3: Migración de código (2-3 horas)**
+  - Reemplazar strings hardcoded por `get_text()`
+  - Ejemplo: `"¡POLE CRÍTICO!"` → `get_text("pole.critical", guild_id)`
+  - Testing: Verificar que todo funciona con idioma español
+  
+- [ ] **FASE 4: Traducción al inglés (1-2 horas)**
+  - Traducir todos los strings en `en.json`
+  - Mantener tono consistente (casual/fun)
+  - Revisar términos técnicos ("pole", "streak", "marranero")
+  
+- [ ] **FASE 5: Comando de configuración (30 min)**
+  - Añadir parámetro `language` a `/settings`
+  - Validación: solo "es" o "en"
+  - Mensaje confirmación traducido
+  
+- [ ] **DECISIÓN PENDIENTE: Descripciones de comandos**
+  - Opción A: Comandos en inglés, respuestas traducidas (SIMPLE, RECOMENDADO)
+  - Opción B: `locale_str()` oficial de Discord (COMPLEJO, profesional)
+  - Opción C: Guild-specific commands + resync (MUY COMPLEJO, no recomendado)
+  
+**Estimación total: 8-12 horas**  
+**Prioridad: BAJA - Hacer después de Año Nuevo cuando todo esté estable**
 
 ---
 
-## 📊 ESTADO ACTUAL - v1.0 EN DESARROLLO
-
-### ✅ LO QUE YA ESTÁ HECHO
-
-**Documentación Completa:**
-- ✅ docs/DESIGN.md - Diseño completo del sistema de hora aleatoria
-- ✅ docs/SCORING.md - Sistema de puntos por velocidad de respuesta
-- ✅ docs/RULES.md - Reglas actualizadas con hora variable
-- ✅ README.md - Documentación principal actualizada
-
-**Backend Funcional (Sistema Antiguo - Temporal):**
-- ✅ Base de datos SQLite (producción + debug separados)
-- ✅ Detección de "pole" (case insensitive, palabra exacta)
-- ✅ Sistema de puntos básico (20/11/10/8)
-- ✅ Sistema de rachas (1.0x → 2.5x hasta 365 días)
-
-- ✅ Separación debug/producción completa
-
-**Comandos Implementados:**
-- ✅ `/profile` - Estadísticas individuales (renombrado de /stats)
-- ✅ `/leaderboard` - Top 10 del servidor
-- ✅ `/settings` - Comando único con interfaz interactiva
-- ✅ `/debug` completo - Testing sin afectar producción
-
-**IMPORTANTE:** El código actual usa sistema temporal (pole fijo 12h, orden de llegada). 
-Debe actualizarse para implementar hora aleatoria y puntos por retraso.
-
----
-
-## 📋 TAREAS PENDIENTES PARA v1.0
-
-### FASE 1: Documentación (COMPLETADA ✅)
-- ✅ Diseño conceptual completo
-- ✅ DESIGN.md, SCORING.md, RULES.md actualizados
-- ✅ README.md actualizado
-- ⏳ Actualizar COMMANDS.md con comandos nuevos (/predict, /history)
-- ⏳ Actualizar NOTIFICATIONS.md con mensajes de apertura
-- ⏳ Actualizar ACHIEVEMENTS.md para sistema de velocidad
-
-### FASE 2: Base de Datos (SIGUIENTE)
-- ⏳ Añadir `daily_pole_time` (TIME) en tabla servers
-- ⏳ Añadir `pole_range_start` (INT) en servers (default: 8)
-- ⏳ Añadir `pole_range_end` (INT) en servers (default: 20)
-- ⏳ Añadir `notify_opening` (BOOL) en servers (default: 1)
-- ⏳ Añadir `opening_time` (DATETIME) en tabla poles
-- ⏳ Añadir `user_time` (DATETIME) en tabla poles
-- ⏳ Añadir `delay_minutes` (INT) en tabla poles
-- ⏳ Script de migración para actualizar schema
-
-### FASE 3: Lógica Core
-- ⏳ Crear tarea programada 00:00 → Generar hora aleatoria del día
-- ⏳ Crear tarea programada variable → Notificación de apertura
-- ⏳ Actualizar `on_message` en pole.py:
-  - Calcular delay desde opening_time
-  - Determinar categoría por delay (no por orden)
-  - Guardar opening_time, user_time, delay_minutes
-- ⏳ Actualizar función `calculate_points()`:
-  - Eliminar lógica de 1º/2º/3º
-  - Implementar lógica por franjas de tiempo
-- ⏳ Actualizar función `determine_pole_type()`:
-  - Cambiar de orden a delay en minutos
-
-### FASE 4: Comandos Nuevos/Actualizados
-- ⏳ Crear `/predict` - Mostrar rango de horas posibles mañana
-- ⏳ Crear `/history` - Mostrar historial de horas de apertura
-- ⏳ Actualizar `/settings`:
-  - Añadir opción "Rango de Horas" (pole_range_start/end)
-  - Añadir opción "Notificación Apertura" (notify_opening)
-- ⏳ Actualizar `/stats`:
-  - Añadir retraso promedio
-  - Añadir mejor tiempo registrado
-  - Añadir distribución por categorías (Crítico/Veloz/Normal/etc)
-- ⏳ Actualizar `/leaderboard`:
-  - Añadir opción ordenar por velocidad promedio
-
-### FASE 5: Testing
-- ⏳ Testing generación hora aleatoria (verificar rango)
-- ⏳ Testing notificación apertura (timing correcto)
-- ⏳ Testing cálculo puntos por delay
-- ⏳ Testing comandos /predict y /history
-- ⏳ Testing configuración rango horario
-- ⏳ Ajustar balance de puntos según feedback
-- ⏳ Verificar sistema de rachas funciona correctamente
-
-### FASE 6: Deploy Inicial
-- ⏳ Empaquetar con git archive
-- ⏳ Copiar a servidor (scp a manumyx@192.168.1.102)
-- ⏳ Configurar venv en servidor
-- ⏳ Configurar .env con token y settings
-- ⏳ Configurar systemd para auto-start
-- ⏳ Testing en producción
-- ⏳ Monitoreo primeros días
-
-### FASE 7: Post-Lanzamiento
-- ⏳ Implementar sistema de logros completo
-- ⏳ Crear comando `/achievements`
-- ⏳ Recopilar feedback de usuarios
-- ⏳ Ajustes basados en uso real
-
----
-
-## 🎯 SIGUIENTE ACCIÓN INMEDIATA
-
-**Comenzar FASE 2: Migración de Base de Datos**
-
-1. Actualizar `utils/database.py` para añadir nuevos campos
-2. Crear script de migración `scripts/migrate_to_v1.py`
-3. Testing de migración en base de datos de desarrollo
-4. Validar que queries existentes siguen funcionando
-
-Después de completar BD → Pasar a FASE 3 (Lógica Core)
-
----
-
-*Proyecto Pole Bot v1.0 - Primera versión con sistema de hora aleatoria*
-*Estado: Documentación completa, implementación pendiente*
-*Última actualización: 2025-11-17*
-
----
-
-## 🔥 GRAN REESTRUCTURACIÓN v3.0 - SISTEMA DE HORA ALEATORIA
-
-### ⚡ CONCEPTO NUEVO: POLE A HORA ALEATORIA
-
-**Cambio fundamental:** El pole YA NO será a las 12:00h fijas cada día. En su lugar:
-
-1. **Hora aleatoria diaria**: Cada día, el bot elige una hora aleatoria entre 08:00 y 20:00 (configurable por servidor)
-2. **Notificación de apertura**: A esa hora, el bot anuncia en el canal configurado: "🔔 ¡Pole abierto! Escribe 'pole' ahora"
-3. **Ventanas de tiempo**: Los puntos se otorgan según cuántas HORAS tardas desde la apertura
-
-### 📊 NUEVO SISTEMA DE PUNTOS POR RETRASO
-
-En lugar de "primero/segundo/marranero", ahora es por TIEMPO DE RETRASO:
-
-| Retraso desde apertura | Categoría | Puntos Base | Emoji |
-|------------------------|-----------|-------------|-------|
-| 0-15 minutos | **Crítico** 💎 | 20 pts | Rápido como el rayo |
-| 15 min - 1 hora | **Veloz** ⚡ | 15 pts | Bien atento |
-| 1-3 horas | **Normal** 🏁 | 10 pts | Participación estándar |
-| 3-6 horas | **Tardío** 🐢 | 7 pts | Llegas tarde |
-| 6+ horas | **Marranero** 🐷 | 5 pts | Casi ni te enteras |
-
-### 🎯 MANTIENE LO BUENO DEL SISTEMA ANTERIOR
-
-- ✅ Sistema de rachas (1-365 días, multiplicador hasta 2.5x)
-- ✅ Todos pueden ganar cada día (no competitivo)
-
-- ✅ Rangos y logros
-- ✅ Protección anti-lose/lose (20% conservado)
-
-### 🆕 NUEVAS CARACTERÍSTICAS
-
-1. **Variabilidad**: Cada día es diferente, no hay monotonía
-2. **Notificaciones opcionales**: Rol ping cuando se abre el pole
-3. **Predicción**: Comando `/predict` para ver rango de horas posibles del día siguiente
-4. **Historial**: `/history` muestra las últimas horas de apertura
-5. **Configuración flexible**: Admins pueden configurar el rango de horas (ej: 10:00-18:00, o 08:00-23:00)
-
-### ⚙️ IMPLICACIONES TÉCNICAS (para implementación futura)
-
-**Base de datos:**
-- Añadir campo `daily_pole_time` en tabla `servers` (hora aleatoria del día actual)
-- Añadir campo `pole_time_range_start` y `pole_time_range_end` (rango configurable)
-- Guardar timestamp exacto de cuando cada usuario hace pole
-
-**Lógica nueva:**
-- Tarea programada que cada día a las 00:00 genera hora aleatoria
-- Tarea programada que a la hora generada envía notificación
-- Cálculo de puntos basado en diferencia de tiempo (no en orden de llegada)
-
-**Comandos a actualizar:**
-- `/settings` → añadir configuración de rango horario
-- `/stats` → mostrar promedio de retraso del usuario
-- `/leaderboard` → puede ordenar por "más rápido en promedio"
-
----
-
-## ✅ ESTADO ACTUAL DEL PROYECTO (lo que YA está hecho)
-
-### Implementado y Funcional:
-- ✅ Base de datos SQLite con tablas separadas (producción + debug)
-- ✅ Sistema de detección de "pole" (case insensitive, palabra exacta)
-- ✅ Sistema de puntos base: Crítica (20), Secundón (11), Normal (10), Marranero (8)
-- ✅ Sistema de rachas con multiplicadores progresivos (1.0x → 2.5x hasta 365 días)
-
-- ✅ Comando `/settings` unificado con interfaz interactiva (selects + modals)
-- ✅ Comando `/stats` para ver estadísticas individuales
-- ✅ Comando `/leaderboard` con top 10 del servidor
-- ✅ Comando `/debug` completo para testing sin afectar producción
-  - `/debug simulate_pole` - Simular poles
-  - `/debug stats` - Ver stats debug
-  - `/debug leaderboard` - Ver ranking debug
-  - `/debug clear` - Limpiar datos debug
-  - `/debug grant` - Otorgar logros manualmente
-  - `/debug welcome` - Probar mensaje de bienvenida
-- ✅ Sistema de onboarding al unirse a servidor
-- ✅ Bloqueo de primer día (no se puede hacer pole hasta el día siguiente)
-- ✅ Separación completa de datos debug vs producción
-- ✅ Notificaciones configurables (reset y ganador)
-- ✅ Configuración de rol de ping opcional
-- ✅ Hora de reset configurable por servidor
-
-### Documentación Actual:
-- ✅ docs/DESIGN.md - Diseño completo del sistema (sistema viejo fijo 12h)
-- ✅ docs/SCORING.md - Sistema de puntos y rachas (sistema viejo)
-- ✅ docs/RULES.md - Reglas del juego (sistema viejo)
-- ✅ docs/COMMANDS.md - Lista de comandos disponibles
-- ✅ docs/ACHIEVEMENTS.md - Sistema de logros (pendiente implementar)
-- ✅ docs/NOTIFICATIONS.md - Sistema de notificaciones
-- ✅ README.md - Documentación principal
-
----
-
-## 📋 PRÓXIMAS TAREAS (en orden de prioridad)
-
-### FASE 1: Rediseño Documental (ACTUAL)
-- [ ] **Reescribir docs/DESIGN.md** → Sistema de hora aleatoria
-- [ ] **Reescribir docs/SCORING.md** → Puntos por retraso en horas
-- [ ] **Reescribir docs/RULES.md** → Nuevas reglas con hora variable
-- [ ] **Actualizar README.md** → Reflejar nuevo concepto
-- [ ] **Actualizar docs/NOTIFICATIONS.md** → Notificación de apertura diaria
-
-**IMPORTANTE: NO TOCAR CÓDIGO EN ESTA FASE. SOLO DOCUMENTACIÓN.**
-
-### FASE 2: Implementación del Sistema Nuevo
-- [ ] Migrar base de datos (añadir campos necesarios)
-- [ ] Implementar generación de hora aleatoria diaria
-- [ ] Actualizar lógica de detección de pole (cálculo por tiempo de retraso)
-- [ ] Crear tarea programada para notificación de apertura
-- [ ] Actualizar comando `/settings` para configurar rango horario
-- [ ] Añadir comando `/predict` para ver rango de mañana
-- [ ] Añadir comando `/history` para ver historial de horas
-- [ ] Actualizar `/stats` para mostrar promedio de retraso
-
-### FASE 3: Testing y Ajustes
-- [ ] Testing extensivo en servidor de desarrollo
-- [ ] Ajustar balance de puntos según feedback
-- [ ] Verificar compatibilidad con datos existentes
-- [ ] Migración de datos de usuarios actuales (si aplica)
-
-### FASE 4: Características Futuras (Post-lanzamiento)
-- [ ] Sistema de logros completo
-- [ ] Comando `/achievements`
-- [ ] Dashboard web opcional
-- [ ] Sistema de eventos especiales
-- [ ] Rivalidades entre usuarios
-- [ ] Predicciones colaborativas
-
----
-
-## 🎨 REFINAMIENTO COMPLETO - v2.0 CON ESENCIA (SISTEMA ANTIGUO - PARA REFERENCIA)
-
-✅ **DISEÑO COMPLETADO** - Ver DESIGN.md para detalles completos
-
-### Mejoras Clave Implementadas (Sistema Viejo):
-1. Sistema de Pole Crítica (20 pts) vs Normal (10 pts) vs Marranero (8 pts)
-2. Ventana de tiempo clarificada: primeros 30 minutos después de las 12h
-3. Protección contra intentos anticipados y multi-servidor
-4. Balance anti-lose/lose: conservas 20% al perder racha
-5. Rachas máximo 365 días (objetivo épico pero alcanzable)
-6. Sistema de rangos con emojis personalizados del bot
-7. Slash commands modernos (/leaderboard, /settings, etc.)
-8. Personalidad y humor en todos los mensajes del bot
-9. Sistema de representación de servidor para rankings globales
-10. Eventos especiales, rivalidades, predicciones, etc.
-
----
-
-## 📊 RESUMEN EJECUTIVO - ESTADO DEL PROYECTO
-
-### ✅ LO QUE YA ESTÁ HECHO (v2.0 - Sistema Actual)
-
-**Backend Completo:**
-- ✅ Base de datos SQLite con tablas separadas (producción + debug)
-- ✅ Sistema de detección de "pole" (case insensitive, palabra exacta)
-- ✅ Sistema de puntos: Crítica (20), Secundón (11), Normal (10), Marranero (8)
-- ✅ Sistema de rachas con multiplicadores (1.0x → 2.5x hasta 365 días)
-
-- ✅ Bloqueo primer día (no poles hasta día siguiente)
-- ✅ Separación completa debug/producción
-
-**Comandos Funcionando:**
-- ✅ `/stats` - Estadísticas individuales
-- ✅ `/leaderboard` - Top 10 del servidor
-- ✅ `/settings` - Comando único con interfaz interactiva (selects + modals)
-- ✅ `/debug` completo - Testing sin afectar producción
-  - simulate_pole, stats, leaderboard, clear, grant, welcome
-
-**Sistema de Configuración:**
-- ✅ Canal de pole configurable
-- ✅ Hora de reset configurable
-- ✅ Rol de ping opcional
-- ✅ Notificaciones toggle (reset + ganador)
-- ✅ Mensaje de onboarding al unirse a servidor
-
-### 🔥 LO QUE VIENE (v3.0 - Sistema de Hora Aleatoria)
-
-**Cambio Conceptual:**
-- ❌ Pole fijo a las 12:00h → ✅ Pole a hora ALEATORIA cada día
-- ❌ Puntos por orden (1º, 2º, 3º) → ✅ Puntos por TIEMPO DE RETRASO
-- ❌ Monotonía → ✅ Variabilidad e imprevisibilidad
-
-**Documentación Nueva Creada:**
-- ✅ docs/DESIGN_V3_RANDOM.md - Diseño completo sistema hora aleatoria
-- ✅ docs/SCORING_V3_RANDOM.md - Puntos por velocidad de respuesta
-- ✅ docs/RULES_V3_RANDOM.md - Reglas actualizadas
-- ✅ README.md actualizado con v3.0
-
-**Puntos por Retraso:**
-- 💎 Crítico (0-15min): 20 pts
-- ⚡ Veloz (15min-1h): 15 pts
-- 🏁 Normal (1-3h): 10 pts
-- 🐢 Tardío (3-6h): 7 pts
-- 🐷 Marranero (6+h): 5 pts
-
-**Nuevas Características v3.0:**
-1. Generación diaria de hora aleatoria (00:00)
-2. Notificación de apertura con rol ping
-3. Rango horario configurable por servidor (ej: 08:00-20:00)
-4. Comando `/predict` - Ver rango de horas mañana
-5. Comando `/history` - Ver historial de aperturas
-6. Nuevas estadísticas: retraso promedio, mejor tiempo, distribución
-
-### 📋 TAREAS PENDIENTES (En orden)
-
-**FASE 1: Documentación (COMPLETADA)**
-- ✅ Diseño conceptual v3.0
-- ✅ Reescribir DESIGN, SCORING, RULES
-- ✅ Actualizar README
-- ⏳ Actualizar COMMANDS.md
-- ⏳ Actualizar NOTIFICATIONS.md
-- ⏳ Actualizar ACHIEVEMENTS.md
-
-**FASE 2: Base de Datos**
-- ⏳ Añadir campo `daily_pole_time` en tabla servers
-- ⏳ Añadir campos `pole_range_start` y `pole_range_end` en servers
-- ⏳ Añadir campo `notify_opening` en servers
-- ⏳ Añadir campos en tabla poles: `opening_time`, `user_time`, `delay_minutes`
-- ⏳ Script de migración para datos existentes
-
-**FASE 3: Lógica Core**
-- ⏳ Tarea programada 00:00 → Generar hora aleatoria
-- ⏳ Tarea programada variable → Notificación de apertura
-- ⏳ Actualizar `on_message` para calcular puntos por retraso
-- ⏳ Actualizar función `calculate_points()` con nueva lógica
-- ⏳ Actualizar detección de tipos de pole (ya no por orden)
-
-**FASE 4: Comandos Nuevos/Actualizados**
-- ⏳ Crear `/predict` - Rango de horas mañana
-- ⏳ Crear `/history` - Historial aperturas
-- ⏳ Actualizar `/settings` - Añadir configuración rango horario
-- ⏳ Actualizar `/stats` - Añadir retraso promedio, mejor tiempo
-- ⏳ Actualizar `/leaderboard` - Añadir ordenamiento por velocidad
-
-**FASE 5: Testing**
-- ⏳ Testing en servidor de desarrollo
-- ⏳ Ajustar balance de puntos según feedback
-- ⏳ Verificar compatibilidad con datos existentes
-- ⏳ Testing de notificaciones de apertura
-- ⏳ Testing de comandos nuevos
-
-**FASE 6: Deploy**
-- ⏳ Migración de datos de usuarios actuales
-- ⏳ Deploy a servidor de producción (manumyx@192.168.1.102)
-- ⏳ Configurar servicio systemd
-- ⏳ Monitoreo y ajustes post-lanzamiento
-
-### 🎯 SIGUIENTE ACCIÓN INMEDIATA
-
-**NO TOCAR CÓDIGO AÚN**. Primero:
-1. Revisar documentación nueva (DESIGN_V3, SCORING_V3, RULES_V3)
-2. Validar que el concepto es el deseado
-3. Confirmar rangos de puntos (20/15/10/7/5)
-4. Confirmar rangos de tiempo (15min, 1h, 3h, 6h)
-5. Decidir si mantener rangos actuales o ajustar
-
-**Después de validación:** Comenzar FASE 2 (Base de datos)
-
----
-
-*Proyecto Pole Bot - Estado actualizado: 2025-11-17*
-*Versión actual: v2.0 (producción)*
-*Versión en diseño: v3.0 (hora aleatoria)*
-
----
-
-## 🎨 REFINAMIENTO COMPLETO - v2.0 CON ESENCIA
-
-✅ **DISEÑO COMPLETADO** - Ver DESIGN.md para detalles completos
-
-### Mejoras Clave Implementadas:
-1. Sistema de Pole Crítica (25 pts) vs Normal (10 pts) vs Tardía (0 pts)
-2. Ventana de tiempo clarificada: primeros 30 minutos después de las 12h
-3. Protección contra intentos anticipados y multi-servidor
-4. Balance anti-lose/lose: conservas 20% al perder racha
-5. Rachas máximo 365 días (objetivo épico pero alcanzable)
-6. Sistema de rangos con emojis personalizados del bot
-7. Slash commands modernos (/leaderboard, /config, etc.)
-8. Personalidad y humor en todos los mensajes del bot
-9. Sistema de representación de servidor para rankings globales
-10. Eventos especiales, rivalidades, predicciones, etc.
-
-### Ideas Pendientes para Futuro:
-- Dashboard web opcional (Fase 4)
-- Sistema de equipos temporales
-- Más easter eggs y logros ocultos
-- Integración con otros bots de Discord
-- API pública para estadísticas
-- Modo torneo para competencias organizadas
-- Sistema de apuestas con puntos (jugar puntos en quién ganará)
-- Predicciones colaborativas (la comunidad vota quién ganará)
-- Cartas especiales/power-ups (freeze racha, doble puntos, etc.)
-- Misiones diarias/semanales para puntos extra
-- Sistema de trading de badges entre usuarios
-- Pole "privados" en hilos/threads específicos
-- Notificaciones push personalizadas fuera de Discord
-- Integración con Twitch para streamers
-- Sistema de mentores/aprendices
-- Logros colaborativos (todos en el servidor deben hacer pole 7 días seguidos)
-
-### Próximo Paso: IMPLEMENTACIÓN
-**Fase 1 (MVP):** Empezar con lo esencial funcional
-- Detección exacta de "pole"
-- Sistema de puntos balanceado
-- Rachas con protección anti-lose/lose
-- Warnings con reacciones
-- Notificaciones básicas
-
----
-
-*Diseño con ESENCIA completado. Ready to code.* 🚀
-
----
-
-## ✅ v2.1 Rework PENDIENTE (Puntos y Rachas)
-
-Decisiones a confirmar:
-- [ ] Ventana 00:00–08:00: ¿Se trata como Normal (10 pts) o creamos categoría "Madrugador" con otros puntos?
-- [ ] Redondeo de puntos con multiplicadores: ¿floor, ceil o banker's rounding?
-- [ ] Curva de racha hasta 2.5x: elegir Opción A (lineal), B (hitos) o C (suave).
-
-Tareas:
-- [ ] Actualizar lógica en `cogs/pole.py` con nuevas ventanas: Normal (08:00–12:00), Marranero (>=12:00), Crítico 2.0x
-- [ ] Añadir contador de "marraneros" en DB (`utils/database.py`)
-- [ ] Implementar multiplicador de racha con tope 2.5x (según opción elegida)
-- [ ] Exponer `/leaderboard` mostrando separador de marraneros vs normales
-- [ ] Añadir `/achievements` y pop-up embed al desbloquear
-- [ ] Crear `docs/ACHIEVEMENTS.md` (tras validar la lista)
-
----
-
-## 🔔 Configuración de Ping de Apertura (Nuevo Requisito v1.0)
-
-Objetivo: permitir configurar qué rol se menciona cuando se abre el pole diario.
-
-Estados posibles:
-- `none` (no se menciona nada)
-- `role:<id>` (rol específico configurado)
-- `everyone` (usa @everyone, requiere confirmación)
-
-Flujo @everyone:
-1. Admin ejecuta `/poleping set everyone`
-2. Bot responde con advertencia: "¿Seguro? Puede ser spam." y requiere `/poleping confirm` dentro de 60s.
-3. Si confirma, se guarda.
-4. Si no, se cancela.
-
-Comandos plan:
-- `/poleping set <@rol|everyone|none>`
-- `/poleping show` (muestra configuración actual)
-- Integrar alternativa en `/config` con botón "Editar Ping".
-
-Persistencia:
-- Campo nuevo en configuración de servidor: `ping_mode` (none|role|everyone)
-- Campo `ping_role_id` (nullable)
-
-Pendiente:
-- [ ] Añadir sección técnica en DESIGN.md (hecha)
-- [ ] Implementar almacenamiento en `utils/database.py`
-- [ ] Crear comandos en `cogs/config.py` o nuevo `cogs/ping.py`
-- [ ] Añadir advertencia/confirmación para @everyone
-- [ ] Actualizar lógica de notificación (reset) para usar configuración
-- [ ] Añadir tests básicos de flujo (opcional más adelante)
-
----
-
-## 🏆 Logros por Puntos Totales (Milestones) - Implementación
-
-Lista acordada (puede escalar si se adopta ×10):
-- 10   → El Comienzo
-- 100  → Persistente
-- 1,000 → Umbral Experto
-- 10,000 → Camino del Maestro
-- 100,000 → Maestro del Pole
-- 1,000,000 → Ascenso Divino
-- 10,000,000 → Nuevo Dios
-- 100,000,000 → Entidad Superior
-
-Tareas:
-- [ ] Definir estructura de logros en código (ID, nombre, puntos requeridos)
-- [ ] Agregar detección automática tras actualizar puntos
-- [ ] Registrar fecha de obtención
-- [ ] Mostrar rareza dinámica (calcular % jugadores que lo tienen)
-- [ ] Integrar en `/achievements` y `/profile`
-
----
-
-## ⚙️ Escala de Puntos (Decisión Pendiente)
-
-Elegir Opción B (×10) o C (×100) para evitar decimales.
-
-Tareas condicionadas:
-- [ ] Si se elige ×10: actualizar bases (20→200, 11→110, 10→100, 7→70) en DESIGN.md y ejemplos
-- [ ] Ajustar acumuladores y cálculo de racha (mantiene 0.1x escalones sin decimales)
-- [ ] Revisar logros por puntos si necesitan reinterpretación visual
-- [ ] Añadir toggle de vista compacta vs precisa en `/leaderboard`
-
--COMPROBAR LO SIGUIENTE-
-- Al hacer la migración, mantener las rachas, con sus respectivos multiplicadores.
+### Otras Mejoras Menores
+- [ ] Traducción al inglés (internacionalización)
+- [ ] Revisar emojis de fuego custom en contextos incorrectos
+- [ ] Tener un comando para ver las rachas inactivas del server
+- [ ] Ping privado en ventana marranero para salvar racha
+- [ ] Emoji fuego gris cuando racha NO activa, normal cuando activa
+- [ ] Caja de ajustes: mostrar servidor representado y otras opciones faltantes
+- [ ] Rediseño de ventanas embedidas:
+    - Jerarquía visual: nombre grande → server representado pequeño → stats en línea
+    - Satisfacción visual en /leaderboard y /profile
+
+### Bugs/Mejoras detectadas:
+  - [x] ratio poles criticos/veloces/normales rotos en algunos servers por gente que no participa
+    - FIX: Ahora se cuenta solo usuarios ACTIVOS (que han hecho pole alguna vez) por servidor
+    - Evita meta roto: servidor de 80 miembros con 10 jugadores ya no da 8 poles críticos
+    - check_quota_available() ahora usa active_players en vez de total_members
+    - get_total_active_users(guild_id) añadido en database.py
+  - El comando de restaurar rachas hace que no puedas polear, cambiar eso

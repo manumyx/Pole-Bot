@@ -2,7 +2,7 @@
 Pole Bot - Bot de Discord para hacer Pole diario
 """
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 from dotenv import load_dotenv
 import asyncio
@@ -23,6 +23,11 @@ class PoleBot(commands.Bot):
             intents=intents,
             help_command=None    # Desactivar comando de ayuda por defecto
         )
+        
+        # Instancia única de Database para todo el bot
+        from utils.database import Database
+        self._db = Database()
+        print("✅ Base de datos inicializada")
     
     async def setup_hook(self):
         """Se ejecuta antes de que el bot se conecte a Discord"""
@@ -44,6 +49,9 @@ class PoleBot(commands.Bot):
                 print(f"✅ Cog cargado: {cog}")
             except Exception as e:
                 print(f"❌ Error cargando {cog}: {e}")
+        
+        # Iniciar task de actualización de status
+        self.update_status_task.start()
     
     async def on_ready(self):
         """Se ejecuta cuando el bot está listo y conectado"""
@@ -59,8 +67,30 @@ class PoleBot(commands.Bot):
         
         print('✨ Pole Bot está listo!')
         
-        # Sincronizar comandos slash (opcional, para comandos modernos)
-        # await self.tree.sync()
+        # Actualizar status inmediatamente
+        await self._update_presence()
+    
+    async def _update_presence(self):
+        """Actualizar el status del bot con el conteo de usuarios activos que han hecho pole"""
+        # Usar instancia compartida en lugar de crear una nueva
+        active_users = self._db.get_total_active_users()
+        
+        activity = discord.Activity(
+            type=discord.ActivityType.competing,
+            name=f"poleando con {active_users} jugadores"
+        )
+        await self.change_presence(activity=activity, status=discord.Status.online)
+    
+    @tasks.loop(minutes=10)
+    async def update_status_task(self):
+        """Actualizar status cada 10 minutos"""
+        if self.is_ready():
+            await self._update_presence()
+    
+    @update_status_task.before_loop
+    async def before_update_status(self):
+        """Esperar a que el bot esté listo antes de actualizar status"""
+        await self.wait_until_ready()
 
 # Crear instancia del bot
 bot = PoleBot()

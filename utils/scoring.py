@@ -228,14 +228,18 @@ def get_pole_name(pole_type: str) -> str:
     }
     return names.get(pole_type, 'POLE')
 
-def check_quota_available(pole_type: str, current_count: int, total_members: int) -> Tuple[bool, int, Optional[int]]:
+def check_quota_available(pole_type: str, current_count: int, active_players: int) -> Tuple[bool, int, Optional[int]]:
     """
     Verificar si aún hay cuota disponible para este tipo de pole.
+    
+    IMPORTANTE: Se basa en JUGADORES ACTIVOS (usuarios que han hecho pole alguna vez)
+    NO en el total de miembros del servidor. Esto evita meta roto en servers grandes
+    con pocos jugadores activos.
     
     Args:
         pole_type: Tipo de pole (critical, fast, normal, marranero)
         current_count: Cantidad actual de poles de este tipo reclamados hoy
-        total_members: Total de miembros en el servidor (sin contar bots)
+        active_players: Total de jugadores activos en el servidor (han hecho pole alguna vez)
     
     Returns:
         Tupla (hay_cuota_disponible, current_count, max_allowed)
@@ -247,15 +251,16 @@ def check_quota_available(pole_type: str, current_count: int, total_members: int
     if max_percentage is None:
         return (True, current_count, None)
     
-    # Calcular máximo permitido
-    max_allowed = max(1, int(total_members * max_percentage))
+    # Calcular máximo permitido basándose en jugadores ACTIVOS
+    # Mínimo siempre 1 para evitar división por 0 o servers nuevos
+    max_allowed = max(1, int(active_players * max_percentage))
     
     # Verificar si aún hay cupo
     has_quota = current_count < max_allowed
     
     return (has_quota, current_count, max_allowed)
 
-def update_streak(last_pole_date: Optional[str], current_streak: int) -> Tuple[int, bool]:
+def update_streak(last_pole_date: Optional[str], current_streak: int, current_date: Optional[str] = None) -> Tuple[int, bool]:
     """
     Actualizar la racha del usuario
     
@@ -266,7 +271,8 @@ def update_streak(last_pole_date: Optional[str], current_streak: int) -> Tuple[i
     Returns:
         Tupla de (nueva_racha, racha_rota)
     """
-    today = datetime.now().strftime('%Y-%m-%d')
+    # Permitir override de la fecha efectiva del día a contabilizar (para marranero)
+    today = current_date or datetime.now().strftime('%Y-%m-%d')
     
     # Si no hay pole previo, empieza racha
     if not last_pole_date:
@@ -313,40 +319,15 @@ def get_rank_info(total_points: float) -> Tuple[str, str]:
 
 def get_current_season(db_path: str = "data/pole_bot.db") -> str:
     """
-    Detectar la season actual
+    Detectar la season actual basándose en el AÑO ACTUAL
     
-    PRIORIDAD:
-    1. Consulta la base de datos (seasons.is_active = 1)
-    2. Si no hay temporada activa en BD, calcula por año
+    La temporada se determina por el año, NO por lo que esté en la BD.
+    Esto evita que una migración fallida bloquee el sistema.
     
     Returns:
         ID de la season actual ('preseason', 'season_1', 'season_2', etc.)
     """
-    import sqlite3
-    import os
-    
-    # Construir ruta absoluta si es relativa
-    if not os.path.isabs(db_path):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        db_path = os.path.join(project_root, db_path)
-    
-    # 1. Intentar leer desde base de datos (tiene prioridad)
-    if os.path.exists(db_path):
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT season_id FROM seasons WHERE is_active = 1 LIMIT 1')
-            row = cursor.fetchone()
-            conn.close()
-            
-            if row:
-                return row[0]  # Retornar temporada activa desde BD
-        except sqlite3.Error as e:
-            print(f"⚠️ Error leyendo temporada desde BD: {e}")
-            pass  # Si hay error, continuar con detección por año
-    
-    # 2. Fallback: calcular por año actual
+    # Calcular por año actual (SIEMPRE)
     year = datetime.now().year
     
     if year == 2025:
@@ -382,7 +363,7 @@ def get_season_info(season_id: Optional[str] = None) -> dict:
             year = 2025 + season_num  # season_1→2026, season_2→2027
             return {
                 'id': season_id,
-                'name': f'Temporada {season_num}',
+                'name': f'Temporada {year}',
                 'start_date': f'{year}-01-01',
                 'end_date': f'{year}-12-31',
                 'is_ranked': True
@@ -390,11 +371,25 @@ def get_season_info(season_id: Optional[str] = None) -> dict:
         except (IndexError, ValueError):
             pass
     
-    # Fallback (no debería llegar aquí)
-    return {
-        'id': season_id,
-        'name': season_id.replace('_', ' ').title(),
-        'start_date': '2025-01-01',
-        'end_date': '2025-12-31',
-        'is_ranked': False
-    }
+    # Si es un año numérico (ej: "2026"), convertir a season_N
+    try:
+        year = int(season_id)
+        if year >= 2026:
+            season_num = year - 2025
+            return {
+                'id': f'season_{season_num}',
+                'name': f'Temporada {year}',
+                'start_date': f'{year}-01-01',
+                'end_date': f'{year}-12-31',
+                'is_ranked': True
+            }
+        elif year == 2025:
+            return get_season_info('preseason')
+    except (ValueError, TypeError):
+        pass
+    
+    # Fallback: Error en vez de devolver basura
+    raise ValueError(
+        f"❌ season_id inválido: '{season_id}'. "
+        f"Usa 'preseason', 'season_1', 'season_2', etc., o un año numérico (2026, 2027...)"
+    )

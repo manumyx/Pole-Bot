@@ -46,7 +46,7 @@ Si deseas implementar el sistema de logros, este documento puede servir como ref
 - 💎💎💎 **Dios de las Críticas** - 100 poles críticas
 - ⏰ **Perfección Absoluta** - Pole a las 12:00:00 exactas
 - ⚡ **Rayo** - 10 poles en primeros 3 segundos
-
+>
 ## Logros de Rachas
 - 🔥 **En Racha** - 3 días consecutivos
 - 🔥🔥 **Semana Perfecta** - 7 días consecutivos
@@ -139,15 +139,4 @@ y sigues aquí dándole
 
 no sé si eres valiente o directamente no aprendes
 pero respeto la dedicación tío 🎪
-```
-
-### Villano del Server
-```
-👹 @Usuario es oficialmente: Villano del Server
-
-5 rachas de +30 días rotas
-hermano eres el malo de la película
-
-la gente te odia pero yo te respeto
-alguien tiene que ser el villano 😈
 ```
