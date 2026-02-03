@@ -228,7 +228,6 @@ def get_pole_name(pole_type: str, guild_id: Optional[int] = None) -> str:
             'critical': t('pole.type.critical', guild_id),
             'fast': t('pole.type.fast', guild_id),
             'normal': t('pole.type.normal', guild_id),
-            'late': t('pole.type.late', guild_id),
             'marranero': t('pole.type.marranero', guild_id)
         }
         return names.get(pole_type, t('pole.type.normal', guild_id))
@@ -238,7 +237,6 @@ def get_pole_name(pole_type: str, guild_id: Optional[int] = None) -> str:
             'critical': 'CRÍTICA',
             'fast': 'VELOZ',
             'normal': 'POLE',
-            'late': 'TARDÍO',
             'marranero': 'MARRANERO'
         }
         return names.get(pole_type, 'POLE')

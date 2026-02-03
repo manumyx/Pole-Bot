@@ -41,10 +41,19 @@ def _T(key_es: str, key_en: Optional[str] = None) -> app_commands.locale_str:
         key_en = key_es
     
     # DEFAULT es INGLÉS (para todos los idiomas que no sean español)
-    message = app_commands.locale_str(TRANSLATIONS['en'].get(key_en, key_en))
+    en_value = TRANSLATIONS['en'].get(key_en, key_en)
+    es_value = TRANSLATIONS['es'].get(key_es, TRANSLATIONS['en'].get(key_en, key_en))
+    
+    # Si son listas, tomar el primer elemento (solo para comandos/opciones, no debería pasar)
+    if isinstance(en_value, list):
+        en_value = en_value[0]
+    if isinstance(es_value, list):
+        es_value = es_value[0]
+    
+    message = app_commands.locale_str(en_value)
     # Añadir traducción SOLO para español (España y Latinoamérica)
-    message.extras[discord.Locale.spain_spanish.value] = TRANSLATIONS['es'].get(key_es, TRANSLATIONS['en'].get(key_en, key_en))
-    message.extras[discord.Locale.latin_american_spanish.value] = TRANSLATIONS['es'].get(key_es, TRANSLATIONS['en'].get(key_en, key_en))
+    message.extras[discord.Locale.spain_spanish.value] = es_value
+    message.extras[discord.Locale.latin_american_spanish.value] = es_value
     
     return message
 
@@ -66,8 +75,12 @@ def _C(key_es: str, value: str, key_en: Optional[str] = None) -> app_commands.Ch
         key_en = key_es
     
     # Siempre en inglés para universalidad
+    en_value = TRANSLATIONS['en'].get(key_en, key_en)
+    if isinstance(en_value, list):
+        en_value = en_value[0]  # Tomar primer elemento si es lista
+    
     return app_commands.Choice(
-        name=TRANSLATIONS['en'].get(key_en, key_en),
+        name=en_value,
         value=value
     )
 
@@ -1149,8 +1162,10 @@ class PoleCog(commands.Cog):
             if h > 0:
                 return f"{h}h {m}m" if m > 0 else f"{h}h"
             return f"{m}m"
+        
         emoji = get_pole_emoji(pole_type)
         name = get_pole_name(pole_type, guild_id)
+        delay_formatted = format_delay(delay_minutes)
         
         # Crear embed
         embed = discord.Embed(
@@ -1159,13 +1174,13 @@ class PoleCog(commands.Cog):
             timestamp=timestamp
         )
         
-        # Mensaje personalizado según tipo
+        # Mensaje personalizado según tipo (con delay dinámico)
         descriptions = {
-            'critical': t('pole.notification.description_critical', guild_id, mention=message.author.mention),
-            'fast': t('pole.notification.description_fast', guild_id, mention=message.author.mention),
-            'normal': t('pole.notification.description_normal', guild_id, mention=message.author.mention),
-            'late': t('pole.notification.description_late', guild_id, mention=message.author.mention),
-            'marranero': t('pole.notification.description_marranero', guild_id, mention=message.author.mention)
+            'critical': t('pole.notification.description_critical', guild_id, mention=message.author.mention, delay=delay_formatted),
+            'fast': t('pole.notification.description_fast', guild_id, mention=message.author.mention, delay=delay_formatted),
+            'normal': t('pole.notification.description_normal', guild_id, mention=message.author.mention, delay=delay_formatted),
+            'late': t('pole.notification.description_late', guild_id, mention=message.author.mention, delay=delay_formatted),
+            'marranero': t('pole.notification.description_marranero', guild_id, mention=message.author.mention, delay=delay_formatted)
         }
         description = descriptions.get(pole_type, f"{message.author.mention}")
         

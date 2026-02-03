@@ -2,11 +2,12 @@
 Sistema de Internacionalización (i18n) para Pole Bot
 Soporta español (es) e inglés (en)
 """
-from typing import Optional, Dict, Any
+import random
+from typing import Optional, Dict, Any, Union, List
 
 # ==================== DICCIONARIO DE TRADUCCIONES ====================
 
-TRANSLATIONS: Dict[str, Dict[str, str]] = {
+TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
     'es': {
         # ==================== COMMANDS ====================
         'cmd.settings.desc': 'Configurar opciones del Pole Bot (vista según permisos)',
@@ -121,13 +122,11 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'pole.type.critical': 'CRÍTICA',
         'pole.type.fast': 'VELOZ',
         'pole.type.normal': 'POLE',
-        'pole.type.late': 'TARDÍO',
         'pole.type.marranero': 'MARRANERO',
         
         'pole.critical': '⚡ ¡POLE CRÍTICO! En solo **{minutes} minutos**. Eres una máquina.',
         'pole.fast': '🏎️ Pole rápido en **{hours}h {minutes}m**. Bien hecho.',
         'pole.normal': '✅ Pole conseguido en **{hours}h {minutes}m**.',
-        'pole.late': '⏰ Pole tardío... **{hours}h {minutes}m**. Casi lo dejas pasar.',
         'pole.marranero': '🐷 **Pole marranero**... {hours}h tarde. Mejor tarde que nunca.',
         'pole.points': '+**{points}** pts',
         'pole.streak': 'Racha: **{streak}** días',
@@ -137,7 +136,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'pole.before_opening': '⏰ Tranquilo {user}, el pole aún no se ha abierto. Abre a las **{time}**.',
         'pole.not_configured': '⚠️ El pole no está configurado en este servidor. Un admin debe usar `/settings`.',
         'pole.wrong_channel': '❌ {user}, el pole es en {channel}.',
-        'pole.notification_title': '🔥 ¡EL POLE SE HA ABIERTO! 🔥',
+        'pole.notification_title': '<a:fire:1440018375144374302> ¡EL POLE SE HA ABIERTO! <a:fire:1440018375144374302>',
         'pole.notification_desc': '¡Escribe **pole** ahora mismo para ganar puntos!',
         'pole.notification_time': 'Abierto desde las {time}',
         'pole.winner_title': '🏆 ¡{user} ha ganado el pole!',
@@ -181,37 +180,48 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             '{mention} 💎 CRÍTICO en {delay}. Qué reflejos.',
             '{mention} ⚡ CRÍTICO brutal: {delay}. Vas volao.',
             '{mention} 💥 {delay} de CRÍTICO. Imparable.',
+            '{mention} <a:fire:1440018375144374302> {delay}... Estás ROTO. Menudo crítico.',
+            '{mention} ⚡ CRÍTICO ({delay}). Qué bárbaro tío.',
+            '{mention} 💎 {delay}. Te has comido el pole, crack.',
+            '{mention} 🚀 CRÍTICO en {delay}. Nadie te para.',
+            '{mention} ⚡ {delay} de CRÍTICO. Así da gusto.',
+            '{mention} 💥 CRÍTICO brutal: {delay}. Eres un puto crack.',
         ],
         'pole.notification.description_fast': [
             '{mention} 🏎️ Pole rápido en {delay}. Bien pillado.',
             '{mention} ⚡ Veloz: {delay}. Vas servido.',
             '{mention} 🏎️ {delay}. Nada mal, nada mal.',
             '{mention} 💨 Pole rápido ({delay}). A este ritmo vas a arrasar.',
+            '{mention} <a:fire:1440018375144374302> {delay}. Muy fino bro.',
+            '{mention} ⚡ Pole en {delay}. Esa velocidad me gusta.',
+            '{mention} 🏎️ {delay}... Vas sobrao.',
+            '{mention} 💨 Veloz ({delay}). Sigue así campéon.',
         ],
         'pole.notification.description_normal': [
             '{mention} ✅ Pole conseguido en {delay}.',
             '{mention} 🏁 Pole pillado: {delay}. Bien ahí.',
             '{mention} ✅ {delay} de pole. Constante.',
             '{mention} 🏁 Pole en {delay}. Manteniendo el nivel.',
-        ],
-        'pole.notification.description_late': [
-            '{mention} ⏰ Pole tardío... {delay}. Casi lo dejas pasar.',
-            '{mention} ⏰ {delay}... Por los pelos, crack.',
-            '{mention} 😅 Tardío en {delay}. Casi te duermes.',
-            '{mention} ⏰ {delay} tarde. La próxima pon la alarma.',
+            '{mention} ✅ Pole en {delay}. Sólido.',
+            '{mention} 🏁 {delay}. Tranqui pero efectivo.',
+            '{mention} ✅ Pole pillado ({delay}). Todo bajo control.',
         ],
         'pole.notification.description_marranero': [
             '{mention} 🐷 Pole marranero... {delay} tarde. Mejor tarde que nunca.',
             '{mention} 🐷 Marranero: {delay}. Mañana madruga más.',
             '{mention} 🐷 {delay} de retraso. Vaya sueño llevas.',
             '{mention} 🐷 Marranero en {delay}. Al menos viniste.',
+            '{mention} 🐷 {delay} tarde... Eres un marrano tío.',
+            '{mention} 🐷 MARRANERO en {delay}. Qué vergüenza.',
+            '{mention} 🐷 {delay} de retraso. Te pasaste de rosca.',
+            '{mention} 🐷 Marranero ({delay}). Vaya jeta que tienes.',
+            '{mention} 🐷 {delay}... Te dormiste pero bien.',
         ],
         
         # Pole - Footers with personality
         'pole.footer.critical': 'a ver si aguantas el ritmo 🔥',
         'pole.footer.fast': 'vas servido 💪',
         'pole.footer.normal': 'bien pillado 👌',
-        'pole.footer.late': 'por los pelos 😅',
         'pole.footer.marranero': 'mañana madruga más 🥱',
         
         # ==================== PROFILE ====================
@@ -242,14 +252,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'profile.rank': '🏅 Rango',
         'profile.total_points': '💰 Puntos Totales',
         'profile.total_poles': '🏁 Poles Totales',
-        'profile.current_streak': '🔥 Racha Actual',
+        'profile.current_streak': '<a:fire:1440018375144374302> Racha Actual',
         'profile.best_streak': '⭐ Mejor Racha',
         'profile.days': '{days} días',
         'profile.breakdown': '💎 {critical} | ⚡ {fast} | 🏁 {normal} | 🐷 {marranero}',
         'profile.critical_poles': '⚡ Críticos',
         'profile.fast_poles': '🏎️ Rápidos',
         'profile.normal_poles': '✅ Normales',
-        'profile.late_poles': '⏰ Tardíos',
         'profile.marranero_poles': '🐷 Marraneros',
         'profile.speed_stats': '⏱️ Estadísticas de Velocidad',
         'profile.best_time': '🥇 Mejor Tiempo',
@@ -269,7 +278,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'profile.stats.critical': '⚡ Críticos: **{count}**',
         'profile.stats.fast': '🏎️ Rápidos: **{count}**',
         'profile.stats.normal': '🏁 Normales: **{count}**',
-        'profile.stats.late': '⏰ Tardíos: **{count}**',
         'profile.stats.marranero': '🐷 Marraneros: **{count}**',
         
         # ==================== LEADERBOARD ====================
@@ -286,7 +294,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'leaderboard.first_place': '🥇 Primer Puesto',
         'leaderboard.only_servers': '❌ Este comando solo funciona en servidores.',
         'leaderboard.stats': '💰 {points} pts • 🏁 {poles} poles',
-        'leaderboard.stats_streak': '💰 {points} pts • 🏁 {poles} poles • 🔥 {streak}',
+        'leaderboard.stats_streak': '💰 {points} pts • 🏁 {poles} poles • <a:fire:1440018375144374302> {streak}',
         'leaderboard.position': 'Tu posición: #{position} de {total}',
         'leaderboard.position_season': 'Tu posición en {season}: #{position} de {total}',
         'leaderboard.no_users': '❌ Aún no hay usuarios en este servidor.',
@@ -307,7 +315,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'mystats.season_points': '💰 **Puntos:** {points}',
         'mystats.season_poles': '🏁 **Poles:** {poles}',
         'mystats.breakdown': '📈 Desglose',
-        'mystats.breakdown_entry': '⚡ Críticos: {critical} | 🏎️ Rápidos: {fast} | 🏁 Normales: {normal} | ⏰ Tardíos: {late} | 🐷 Marraneros: {marranero}',
+        'mystats.breakdown_entry': '⚡ Críticos: {critical} | 🏎️ Rápidos: {fast} | 🏁 Normales: {normal} | 🐷 Marraneros: {marranero}',
         'mystats.field.status': 'Estado',
         
         # ==================== MIDNIGHT SUMMARY ====================
@@ -423,10 +431,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # ==================== LEADERBOARD ====================
         'leaderboard.title.local_people': '🏆 RANKING LOCAL - Personas - {season}',
         'leaderboard.title.local_servers': '🏆 RANKING LOCAL - Servidores - {season}',
-        'leaderboard.title.local_streaks': '🔥 RANKING DE RACHAS - Local',
+        'leaderboard.title.local_streaks': '<a:fire:1440018375144374302> RANKING DE RACHAS - Local',
         'leaderboard.title.global_people': '🌍 RANKING GLOBAL - Personas - {season}',
         'leaderboard.title.global_servers': '🌍 RANKING GLOBAL - Servidores - {season}',
-        'leaderboard.title.global_streaks': '🔥 RANKING DE RACHAS - Global',
+        'leaderboard.title.global_streaks': '<a:fire:1440018375144374302> RANKING DE RACHAS - Global',
         
         'leaderboard.desc.local_people': 'Servidor: {server}',
         'leaderboard.desc.local_servers': 'Servidores representados por miembros de {server}',
@@ -458,7 +466,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'profile.field.rank_value': '{emoji} **{name}**\n(Mejor temporada: {best_points} pts)',
         'profile.field.total_points': '💰 Puntos Totales',
         'profile.field.total_poles': '🏁 Poles Totales',
-        'profile.field.current_streak': '🔥 Racha Actual',
+        'profile.field.current_streak': '<a:fire:1440018375144374302> Racha Actual',
         'profile.field.best_streak': '⭐ Mejor Racha',
         'profile.field.server_represented': '🏳️ Servidor Representado',
         'profile.field.server_rep_none': 'No configurado',
@@ -489,7 +497,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'help.how_to_play_desc': '1. Espera la **notificación de apertura** (hora aleatoria cada día)\n2. Escribe exactamente **`pole`** en el canal configurado\n3. ¡Gana puntos según tu velocidad!\n⚠️ Solo 1 pole al día, en cualquier servidor',
         'help.categories': '🏆 Categorías de Pole',
         'help.categories_desc': '💎 **Crítica** (0-10 min): 20 pts\n    └ Solo 10% del servidor puede reclamarla\n⚡ **Veloz** (10 min - 3h): 15 pts\n    └ Solo 30% del servidor puede reclamarla\n🏁 **Normal** (3h - 00:00): 10 pts\n    └ Sin límite de usuarios\n🐷 **Marranero** (día siguiente): 5 pts\n    └ Sin límite de usuarios',
-        'help.streaks': '🔥 Sistema de Rachas',
+        'help.streaks': '<a:fire:1440018375144374302> Sistema de Rachas',
         'help.streaks_desc': 'Haz pole días consecutivos para aumentar tu multiplicador\n• 7 días: x1.1\n• 30 días: x1.4\n• 90 días: x1.8\n• 300 días: x2.5 (máximo)',
         'help.commands': '⚙️ Comandos',
         'help.commands_desc': '`/profile` - Ver tu perfil y estadísticas\n`/leaderboard` - Ver rankings (local/global, personas/servidores)\n`/streak` - Info detallada de tu racha\n`/season` - Ver temporada actual y tu progreso\n`/history` - Ver badges y temporadas pasadas\n`/settings` - Configurar el bot (admins)\n`/polehelp` - Ver esta ayuda',
@@ -503,7 +511,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'season.days_left': '**{days}** días',
         'season.finished': '**Finalizada**',
         'season.your_progress': '📊 Tu Progreso en {season}',
-        'season.your_progress_desc': '🎖️ **Rango:** {emoji} {name}\n💰 **Puntos:** {points}\n🏁 **Poles:** {poles}\n🔥 **Mejor Racha:** {streak} días',
+        'season.your_progress_desc': '🎖️ **Rango:** {emoji} {name}\n💰 **Puntos:** {points}\n🏁 **Poles:** {poles}\n<a:fire:1440018375144374302> **Mejor Racha:** {streak} días',
         'season.breakdown': '📈 Desglose',
         'season.breakdown_desc': '💎 Críticas: {critical} | ⚡ Veloces: {fast}\n🏁 Normales: {normal} | 🐷 Marraneros: {marranero}',
         'season.no_poles': 'Aún no has hecho ningún pole en {season}.\n¡Empieza ahora y escala el ranking!',
@@ -517,10 +525,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'mystats.no_badges': 'Aún no has ganado ningún badge.\n¡Completa una temporada para conseguir tu primer badge!',
         'mystats.seasons': '📜 Temporadas Completadas',
         'mystats.no_seasons': 'Aún no has completado ninguna temporada.\n¡Sigue jugando y deja tu marca!',
-        'mystats.season_entry': '**{name}** ({year})\n🎖️ Rango: {rank} | 💰 {points} pts | #{pos} de {total}\n🏁 {poles} poles | 🔥 Mejor racha: {streak}',
+        'mystats.season_entry': '**{name}** ({year})\n🎖️ Rango: {rank} | 💰 {points} pts | #{pos} de {total}\n🏁 {poles} poles | <a:fire:1440018375144374302> Mejor racha: {streak}',
         
         # ==================== STREAK COMMAND ====================
-        'streak.off': '🔥 Racha apagada',
+        'streak.off': '<:gray_fire:1445324596751503485> Racha apagada',
         'streak.off_desc': 'Racha de 0 días. Enciéndela con un pole hoy.',
         'streak.best': '🏆 Tu Mejor Racha',
         'streak.best_value': '**{streak}** días',
@@ -540,7 +548,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'rewind.local_points_desc': 'Los que acumularon más puntos en esta temporada:',
         'rewind.local_poles_title': '⚡ POLEMANIÁTICOS - {server}',
         'rewind.local_poles_desc': 'Los que más veces fueron los primeros:',
-        'rewind.local_streaks_title': '🔥 DISCIPLINA MÁXIMA - {server}',
+        'rewind.local_streaks_title': '<a:fire:1440018375144374302> DISCIPLINA MÁXIMA - {server}',
         'rewind.local_streaks_desc': 'Los que mantuvieron las rachas más largas:',
         'rewind.local_speed_title': '⚡ VELOCISTAS - {server}',
         'rewind.local_speed_desc': 'Los más rápidos en promedio (mínimo 10 poles):',
@@ -548,7 +556,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'rewind.global_desc': 'Las leyendas que dominaron **TODOS** los servidores en {season}:',
         'rewind.global_points': '**👑 Máximos Anotadores**',
         'rewind.global_poles': '**⚡ Polemaniáticos**',
-        'rewind.global_streaks': '**🔥 Disciplina Máxima**',
+        'rewind.global_streaks': '**<a:fire:1440018375144374302> Disciplina Máxima**',
         'rewind.global_speed': '**⚡ Velocistas** (min 10 poles)',
         'rewind.footer_hof': 'Hall of Fame {season} • {tagline}',
         'rewind.footer_global': 'Leyendas del Pole Bot • Nivel Dios',
@@ -744,14 +752,12 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'pole.type.critical': 'CRITICAL',
         'pole.type.fast': 'FAST',
         'pole.type.normal': 'POLE',
-        'pole.type.late': 'LATE',
-        'pole.type.marranero': 'LATE',
+        'pole.type.marranero': 'MARRANERO',
         
         'pole.critical': '⚡ CRITICAL POLE! Just **{minutes} minutes**. Absolutely cracked.',
         'pole.fast': '🏎️ Quick pole in **{hours}h {minutes}m**. Pretty solid.',
         'pole.normal': '✅ Pole secured in **{hours}h {minutes}m**.',
-        'pole.late': '⏰ Late pole... **{hours}h {minutes}m**. Cutting it close there.',
-        'pole.marranero': '🐷 **Late pole**... {hours}h late. Better late than never, innit.',
+        'pole.marranero': '🐷 **Marranero pole**... {hours}h late. Better late than never.',
         'pole.points': '+**{points}** pts',
         'pole.streak': 'Streak: **{streak}** days',
         'pole.streak_multiplier': 'Multiplier: **x{multiplier}**',
@@ -760,7 +766,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'pole.before_opening': '⏰ Chill {user}, pole ain\'t open yet. Drops at **{time}**.',
         'pole.not_configured': '⚠️ Pole isn\'t set up on this server. Admin needs to hit `/settings`.',
         'pole.wrong_channel': '❌ {user}, wrong spot. Pole\'s in {channel}.',
-        'pole.notification_title': '🔥 POLE IS LIVE! 🔥',
+        'pole.notification_title': '<a:fire:1440018375144374302> POLE IS LIVE! <a:fire:1440018375144374302>',
         'pole.notification_desc': 'Type **pole** right now to rack up points!',
         'pole.notification_time': 'Live since {time}',
         'pole.winner_title': '🏆 {user} claimed the pole!',
@@ -798,18 +804,54 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'pole.field.broken_streak_desc': 'You keep 20% of your previous streak',
         'pole.field.broken_streak_title': '💔 Streak Broken',
         
-        # Pole - Notification descriptions
-        'pole.notification.description_critical': '{mention} ⚡ CRITICAL in just 7 minutes!',
-        'pole.notification.description_fast': '{mention} 🏎️ Quick pole, well done!',
-        'pole.notification.description_normal': '{mention} ✅ Pole secured!',
-        'pole.notification.description_late': '{mention} ⏰ Late pole... almost missed it',
-        'pole.notification.description_marranero': '{mention} 🐷 Late pole... better late than never',
+        # Pole - Notification descriptions (with random variations)
+        'pole.notification.description_critical': [
+            '{mention} ⚡ CRITICAL in just {delay}! Absolutely cracked.',
+            '{mention} 💎 CRITICAL: {delay}. Lightning fast.',
+            '{mention} ⚡ Brutal CRITICAL: {delay}. On fire.',
+            '{mention} 💥 {delay} CRITICAL. Unstoppable.',
+            '{mention} <a:fire:1440018375144374302> {delay}... You\'re INSANE. What a crit.',
+            '{mention} ⚡ CRITICAL ({delay}). Fucking beast mode.',
+            '{mention} 💎 {delay}. You ATE that pole, king.',
+            '{mention} 🚀 CRITICAL in {delay}. Built different.',
+            '{mention} ⚡ {delay} CRITICAL. No one\'s touching you.',
+            '{mention} 💥 Brutal CRITICAL: {delay}. Too clean.',
+        ],
+        'pole.notification.description_fast': [
+            '{mention} 🏎️ Quick pole in {delay}. Solid grab.',
+            '{mention} ⚡ Fast: {delay}. Pretty good.',
+            '{mention} 🏎️ {delay}. Not bad at all.',
+            '{mention} 💨 Quick pole ({delay}). Keep it up.',
+            '{mention} <a:fire:1440018375144374302> {delay}. Clean grab bro.',
+            '{mention} ⚡ Pole in {delay}. That speed hits different.',
+            '{mention} 🏎️ {delay}... You got it like that.',
+            '{mention} 💨 Fast ({delay}). Keep cooking champ.',
+        ],
+        'pole.notification.description_normal': [
+            '{mention} ✅ Pole secured in {delay}.',
+            '{mention} 🏁 Pole grabbed: {delay}. Nice.',
+            '{mention} ✅ {delay} pole. Consistent.',
+            '{mention} 🏁 Pole in {delay}. Steady pace.',
+            '{mention} ✅ Pole in {delay}. Solid.',
+            '{mention} 🏁 {delay}. Chill but effective.',
+            '{mention} ✅ Pole grabbed ({delay}). All good.',
+        ],
+        'pole.notification.description_marranero': [
+            '{mention} 🐷 Marranero pole... {delay} late. Better late than never.',
+            '{mention} 🐷 Marranero: {delay}. Wake up earlier tomorrow.',
+            '{mention} 🐷 {delay} delay. Quite the oversleep.',
+            '{mention} 🐷 Marranero in {delay}. At least you showed up.',
+            '{mention} 🐷 {delay} late... You a whole mess.',
+            '{mention} 🐷 MARRANERO in {delay}. Shameless.',
+            '{mention} 🐷 {delay} delay. Overslept hard.',
+            '{mention} 🐷 Marranero ({delay}). The audacity lmao.',
+            '{mention} 🐷 {delay}... Bro was in a coma.',
+        ],
         
         # Pole - Footers with personality
         'pole.footer.critical': 'let\'s see if you can keep up 🔥',
         'pole.footer.fast': 'pretty nice 💪',
         'pole.footer.normal': 'solid grab 👌',
-        'pole.footer.late': 'cutting it close 😅',
         'pole.footer.marranero': 'wake up earlier tomorrow 🥱',
         
         # ==================== PROFILE ====================
@@ -840,15 +882,14 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'profile.rank': '🏅 Rank',
         'profile.total_points': '💰 Total Points',
         'profile.total_poles': '🏁 Total Poles',
-        'profile.current_streak': '🔥 Current Streak',
+        'profile.current_streak': '<a:fire:1440018375144374302> Current Streak',
         'profile.best_streak': '⭐ Best Streak',
         'profile.days': '{days} days',
         'profile.breakdown': '💎 {critical} | ⚡ {fast} | 🏁 {normal} | 🐷 {marranero}',
         'profile.critical_poles': '⚡ Critical',
         'profile.fast_poles': '🏎️ Fast',
         'profile.normal_poles': '✅ Normal',
-        'profile.late_poles': '⏰ Late',
-        'profile.marranero_poles': '🐷 Late',
+        'profile.marranero_poles': '🐷 Marranero',
         'profile.speed_stats': '⏱️ Speed Stats',
         'profile.best_time': '🥇 Best Time',
         'profile.minutes': '{minutes} min',
@@ -867,8 +908,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'profile.stats.critical': '⚡ Critical: **{count}**',
         'profile.stats.fast': '🏎️ Fast: **{count}**',
         'profile.stats.normal': '🏁 Normal: **{count}**',
-        'profile.stats.late': '⏰ Late: **{count}**',
-        'profile.stats.marranero': '🐷 Late: **{count}**',
+        'profile.stats.marranero': '🐷 Marranero: **{count}**',
         
         # ==================== LEADERBOARD ====================
         'leaderboard.title': '🏆 {scope} LEADERBOARD - {type}',
@@ -884,7 +924,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'leaderboard.first_place': '🥇 First Place',
         'leaderboard.only_servers': '❌ This only works in servers, mate.',
         'leaderboard.stats': '💰 {points} pts • 🏁 {poles} poles',
-        'leaderboard.stats_streak': '💰 {points} pts • 🏁 {poles} poles • 🔥 {streak}',
+        'leaderboard.stats_streak': '💰 {points} pts • 🏁 {poles} poles • <a:fire:1440018375144374302> {streak}',
         'leaderboard.position': 'Your spot: #{position} of {total}',
         'leaderboard.position_season': 'Your spot in {season}: #{position} of {total}',
         'leaderboard.no_users': '❌ No players on this server yet.',
@@ -905,7 +945,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'mystats.season_points': '💰 **Points:** {points}',
         'mystats.season_poles': '🏁 **Poles:** {poles}',
         'mystats.breakdown': '📈 Breakdown',
-        'mystats.breakdown_entry': '⚡ Critical: {critical} | 🏎️ Fast: {fast} | 🏁 Normal: {normal} | ⏰ Late: {late} | 🐷 Late: {marranero}',
+        'mystats.breakdown_entry': '⚡ Critical: {critical} | 🏎️ Fast: {fast} | 🏁 Normal: {normal} | 🐷 Marranero: {marranero}',
         'mystats.field.status': 'Status',
         
         # ==================== MIDNIGHT SUMMARY ====================
@@ -1005,10 +1045,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # ==================== LEADERBOARD ====================
         'leaderboard.title.local_people': '🏆 LOCAL LEADERBOARD - Players - {season}',
         'leaderboard.title.local_servers': '🏆 LOCAL LEADERBOARD - Servers - {season}',
-        'leaderboard.title.local_streaks': '🔥 STREAKS LEADERBOARD - Local',
+        'leaderboard.title.local_streaks': '<a:fire:1440018375144374302> STREAKS LEADERBOARD - Local',
         'leaderboard.title.global_people': '🌍 GLOBAL LEADERBOARD - Players - {season}',
         'leaderboard.title.global_servers': '🌍 GLOBAL LEADERBOARD - Servers - {season}',
-        'leaderboard.title.global_streaks': '🔥 STREAKS LEADERBOARD - Global',
+        'leaderboard.title.global_streaks': '<a:fire:1440018375144374302> STREAKS LEADERBOARD - Global',
         
         'leaderboard.desc.local_people': 'Server: {server}',
         'leaderboard.desc.local_servers': 'Servers repped by members of {server}',
@@ -1040,7 +1080,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'profile.field.rank_value': '{emoji} **{name}**\n(Best season: {best_points} pts)',
         'profile.field.total_points': '💰 Total Points',
         'profile.field.total_poles': '🏁 Total Poles',
-        'profile.field.current_streak': '🔥 Current Streak',
+        'profile.field.current_streak': '<a:fire:1440018375144374302> Current Streak',
         'profile.field.best_streak': '⭐ Best Streak',
         'profile.field.server_represented': '🏳️ Server Repping',
         'profile.field.server_rep_none': 'Not set',
@@ -1084,7 +1124,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'help.how_to_play_desc': '1. Wait for **opening notification** (random time daily)\n2. Type exactly **`pole`** in the configured channel\n3. Earn points based on speed!\n⚠️ Only 1 pole per day, across all servers',
         'help.categories': '🏆 Pole Categories',
         'help.categories_desc': '💎 **Critical** (0-10 min): 20 pts\n    └ Only 10% of server can claim it\n⚡ **Fast** (10 min - 3h): 15 pts\n    └ Only 30% of server can claim it\n🏁 **Normal** (3h - 00:00): 10 pts\n    └ No user limit\n🐷 **Late** (next day): 5 pts\n    └ No user limit',
-        'help.streaks': '🔥 Streak System',
+        'help.streaks': '<a:fire:1440018375144374302> Streak System',
         'help.streaks_desc': 'Hit poles on consecutive days to increase your multiplier\n• 7 days: x1.1\n• 30 days: x1.4\n• 90 days: x1.8\n• 300 days: x2.5 (max)',
         'help.commands': '⚙️ Commands',
         'help.commands_desc': '`/profile` - View your profile and stats\n`/leaderboard` - View rankings (local/global, players/servers)\n`/streak` - Detailed streak info\n`/season` - View current season and your progress\n`/history` - View badges and past seasons\n`/settings` - Configure the bot (admins)\n`/polehelp` - View this help',
@@ -1098,7 +1138,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'season.days_left': '**{days}** days',
         'season.finished': '**Finished**',
         'season.your_progress': '📊 Your Progress in {season}',
-        'season.your_progress_desc': '🎖️ **Rank:** {emoji} {name}\n💰 **Points:** {points}\n🏁 **Poles:** {poles}\n🔥 **Best Streak:** {streak} days',
+        'season.your_progress_desc': '🎖️ **Rank:** {emoji} {name}\n💰 **Points:** {points}\n🏁 **Poles:** {poles}\n<a:fire:1440018375144374302> **Best Streak:** {streak} days',
         'season.breakdown': '📈 Breakdown',
         'season.breakdown_desc': '💎 Critical: {critical} | ⚡ Fast: {fast}\n🏁 Normal: {normal} | 🐷 Late: {marranero}',
         'season.no_poles': 'You haven\'t hit any poles in {season} yet.\nStart now and climb the ranks!',
@@ -1112,10 +1152,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'mystats.no_badges': 'No badges earned yet.\nComplete a season to get your first badge!',
         'mystats.seasons': '📜 Completed Seasons',
         'mystats.no_seasons': 'No completed seasons yet.\nKeep playing and leave your mark!',
-        'mystats.season_entry': '**{name}** ({year})\n🎖️ Rank: {rank} | 💰 {points} pts | #{pos} of {total}\n🏁 {poles} poles | 🔥 Best streak: {streak}',
+        'mystats.season_entry': '**{name}** ({year})\n🎖️ Rank: {rank} | 💰 {points} pts | #{pos} of {total}\n🏁 {poles} poles | <a:fire:1440018375144374302> Best streak: {streak}',
         
         # ==================== STREAK COMMAND ====================
-        'streak.off': '🔥 Streak Off',
+        'streak.off': '<:gray_fire:1445324596751503485> Streak Off',
         'streak.off_desc': '0-day streak. Light it up with a pole today.',
         'streak.best': '🏆 Your Best Streak',
         'streak.best_value': '**{streak}** days',
@@ -1135,7 +1175,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'rewind.local_points_desc': 'Who racked up the most points this season:',
         'rewind.local_poles_title': '⚡ POLE MANIACS - {server}',
         'rewind.local_poles_desc': 'Who hit first the most times:',
-        'rewind.local_streaks_title': '🔥 MAX DISCIPLINE - {server}',
+        'rewind.local_streaks_title': '<a:fire:1440018375144374302> MAX DISCIPLINE - {server}',
         'rewind.local_streaks_desc': 'Who kept the longest streaks:',
         'rewind.local_speed_title': '⚡ SPEED DEMONS - {server}',
         'rewind.local_speed_desc': 'Fastest average times (min 10 poles):',
@@ -1143,7 +1183,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         'rewind.global_desc': 'The legends who dominated **ALL** servers in {season}:',
         'rewind.global_points': '**👑 Top Scorers**',
         'rewind.global_poles': '**⚡ Pole Maniacs**',
-        'rewind.global_streaks': '**🔥 Max Discipline**',
+        'rewind.global_streaks': '**<a:fire:1440018375144374302> Max Discipline**',
         'rewind.global_speed': '**⚡ Speed Demons** (min 10 poles)',
         'rewind.footer_hof': 'Hall of Fame {season} • {tagline}',
         'rewind.footer_global': 'Pole Bot Legends • God Tier',
@@ -1265,6 +1305,10 @@ def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kw
     # Obtener traducción
     lang_dict = TRANSLATIONS.get(lang, TRANSLATIONS['es'])
     template = lang_dict.get(key, key)  # Si no existe, devuelve la key
+    
+    # Si el template es una lista, elegir uno aleatorio (variaciones)
+    if isinstance(template, list):
+        template = random.choice(template)
     
     # Formatear con kwargs si se proveen
     if kwargs:

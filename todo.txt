@@ -4,6 +4,33 @@
 
 ## ✅ COMPLETADOS RECIENTEMENTE (Sesión actual)
 
+### 🎲 SISTEMA DE VARIACIONES ALEATORIAS PARA MENSAJES - COMPLETADO (3 febrero 2026)
+- [x] **Bug fix: Tiempo hardcodeado en notificación critical**
+  - Problema: "CRÍTICO en solo 7 minutos!" aparecía incluso con <1 minuto
+  - Causa: Valor hardcodeado en pole.notification.description_critical
+  - Solución: Pasar parámetro {delay} dinámico desde send_pole_notification()
+  - Archivos: utils/i18n.py (líneas 179, 803), cogs/pole.py (línea 1166)
+
+- [x] **Feature: Frases variadas con personalidad**
+  - Implementado sistema de variaciones aleatorias (4 frases por tipo de pole)
+  - Afecta: critical, fast, normal, late, marranero (español + inglés)
+  - Función t() ahora detecta listas y elige una opción random
+  - Type hints actualizados: Dict[str, Union[str, List[str]]]
+  - Helpers _T() y _C() adaptados para manejar listas (usan [0] si es necesario)
+  - Archivo: utils/i18n.py (líneas 5-8, 177-203, 801-827, 1293-1305)
+
+- [x] **Testing y documentación**
+  - Creado scripts/test_i18n_variations.py para validar variaciones
+  - Tests confirmados: Se muestran variaciones diferentes en cada ejecución
+  - Documentación actualizada en docs/I18N.md (sección "Variaciones Aleatorias")
+  - Ejemplos de uso y guías para cuándo usar variaciones
+
+**IMPACTO:**
+🔥 Los mensajes de pole ahora tienen MUCHA más personalidad
+⚡ Tiempos dinámicos (0m, 5m, 2h 15m) se muestran correctamente
+🎲 Evita repetición: 4 variaciones por tipo × 5 tipos × 2 idiomas = 40 mensajes únicos
+✨ Mantiene la esencia del bot (casual, competitivo, con flow)
+
 ### 🌐 SISTEMA DE INTERNACIONALIZACIÓN (i18n) - COMPLETADO (1 febrero 2026)
 - [x] **Sistema multiidioma implementado**
   - Creado módulo utils/i18n.py con diccionarios ES/EN
