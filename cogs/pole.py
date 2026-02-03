@@ -1534,6 +1534,51 @@ class PoleCog(commands.Cog):
             
             await interaction.followup.send(embed=embed)
     
+    async def temporada_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        """Autocomplete para temporadas disponibles"""
+        from utils.scoring import get_current_season
+        
+        # Obtener temporadas disponibles
+        seasons = self.db.get_available_seasons()
+        current_season_id = get_current_season()
+        
+        # Crear choices: primero "Temporada Actual", luego Lifetime, luego el resto
+        choices = []
+        
+        # Opción 1: Temporada actual (default)
+        current_season = next((s for s in seasons if s['season_id'] == current_season_id), None)
+        if current_season:
+            choices.append(app_commands.Choice(
+                name=f"⭐ {current_season['season_name']} (Actual)",
+                value=current_season['season_id']
+            ))
+        
+        # Opción 2: Lifetime (todas las temporadas)
+        choices.append(app_commands.Choice(
+            name="🏆 Lifetime (Todas las temporadas)",
+            value="lifetime"
+        ))
+        
+        # Opción 3: Resto de temporadas (ordenadas por más reciente)
+        for season in seasons:
+            if season['season_id'] != current_season_id:  # Ya la pusimos arriba
+                emoji = "🎯" if season['is_active'] else "📜"
+                choices.append(app_commands.Choice(
+                    name=f"{emoji} {season['season_name']}",
+                    value=season['season_id']
+                ))
+        
+        # Filtrar por lo que el usuario está escribiendo
+        if current:
+            choices = [c for c in choices if current.lower() in c.name.lower()]
+        
+        # Discord limita a 25 choices
+        return choices[:25]
+    
     @app_commands.command(name="leaderboard", description=_T('cmd.leaderboard.desc'))
     @app_commands.describe(
         alcance=_T('cmd.leaderboard.scope_param'),
@@ -1552,6 +1597,7 @@ class PoleCog(commands.Cog):
             _C('choice.rachas', 'rachas')
         ]
     )
+    @app_commands.autocomplete(temporada=temporada_autocomplete)
     async def leaderboard(
         self, 
         interaction: discord.Interaction, 
@@ -1575,9 +1621,9 @@ class PoleCog(commands.Cog):
         from utils.scoring import get_current_season
         current_season_id = get_current_season()
         
-        # Si no se especifica temporada, usar "lifetime"
+        # Si no se especifica temporada, usar la temporada ACTUAL (no lifetime)
         if temporada is None:
-            temporada = "lifetime"
+            temporada = current_season_id
         
         # Determinar si es lifetime o una season específica
         is_lifetime = (temporada == "lifetime")
