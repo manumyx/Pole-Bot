@@ -2,7 +2,7 @@
 Sistema de Internacionalización (i18n) para Pole Bot
 Soporta español (es) e inglés (en)
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 
 # ==================== DICCIONARIO DE TRADUCCIONES ====================
 
@@ -1051,9 +1051,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # Profile - Streak
         'profile.streak.current_title': '{emoji} Current Streak',
         'profile.streak.current_value': '**{days}** consecutive days\nMultiplier: **x{multiplier:.1f}**',
-        
-        # Profile - POLE REWIND
-        'rewind.streak_value': '<@{uid}> - **{streak}** consecutive days',
         
         # ==================== HISTORY ====================
         'history.title': '📜 Pole History - {user}',

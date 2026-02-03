@@ -4,7 +4,6 @@ Ejecuta la migración en una COPIA de la BD de producción
 """
 import sqlite3
 import shutil
-from datetime import datetime
 
 # Crear copia de seguridad
 print("="*70)

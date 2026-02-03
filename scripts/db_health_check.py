@@ -18,13 +18,12 @@ Ejemplos:
 """
 
 import sqlite3
-import os
 import sys
 import argparse
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict
 
 # Colores para terminal
 class Colors:
@@ -992,7 +991,7 @@ def interactive_show_server_config(conn: sqlite3.Connection):
                     minutes = remainder // 60
                     print(c(f"   ✅ Ya abrió hace: {hours}h {minutes}m", Colors.GREEN))
             except:
-                pass
+                pass  # Ignorar si no se puede parsear la hora de apertura
         else:
             print(c(f"   ⚠️ Sin hora de apertura configurada para hoy", Colors.RED))
         

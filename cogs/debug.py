@@ -6,7 +6,7 @@ Se carga solo si DEBUG=1 en .env
 import os
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Any, Coroutine
+from typing import Optional
 import inspect
 
 import discord
@@ -165,7 +165,7 @@ class DebugCog(commands.Cog):
                     minutes = int((delta.total_seconds() % 3600) // 60)
                     time_str += f"\n✅ Abierto hace {hours}h {minutes}m"
             except:
-                pass
+                pass  # Ignorar si no se puede parsear la hora
         
         embed.add_field(name="⏰ Hora de Hoy", value=time_str, inline=True)
         
@@ -199,7 +199,7 @@ class DebugCog(commands.Cog):
                 schema_row = cursor.fetchone()
                 schema_info = f"v{schema_row['version']}" if schema_row else "N/A"
         except:
-            schema_info = "Error"
+            schema_info = "Error"  # Error al leer versión de schema
         
         embed.set_footer(text=f"Schema: {schema_info} | Usa /debug info @usuario para ver historial")
         
@@ -300,7 +300,7 @@ class DebugCog(commands.Cog):
                 else:
                     checks.append(f"🟢 Abierto")
             except:
-                checks.append("⚠️ Error hora")
+                checks.append("⚠️ Error hora")  # Error al parsear hora de apertura
         else:
             checks.append("❌ Sin hora")
             can_pole = False
@@ -725,10 +725,10 @@ class DebugCog(commands.Cog):
                 elif year == 2025:
                     target_season = 'preseason'
             except ValueError:
-                pass
+                pass  # Ignorar si no se puede parsear el año
         
         try:
-            season_info = get_season_info(target_season)
+            get_season_info(target_season)  # Validate season exists
         except ValueError as e:
             await interaction.followup.send(
                 f"❌ Error: {e}\n**Formatos válidos:** preseason, season_1, 2026, etc.",

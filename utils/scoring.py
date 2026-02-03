@@ -420,7 +420,7 @@ def get_season_info(season_id: Optional[str] = None) -> dict:
         elif year == 2025:
             return get_season_info('preseason')
     except (ValueError, TypeError):
-        pass
+        pass  # Ignorar errores al parsear el año, caer al fallback
     
     # Fallback: Error en vez de devolver basura
     raise ValueError(

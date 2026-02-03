@@ -5,7 +5,7 @@ Maneja toda la persistencia del Pole Bot
 import sqlite3
 import os
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Tuple, Any
+from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
 class Database:

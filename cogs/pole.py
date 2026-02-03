@@ -474,7 +474,7 @@ class PoleCog(commands.Cog):
             try:
                 task.cancel()
             except:
-                pass
+                pass  # Ignorar si la tarea ya estaba cancelada o finalizada
 
     # ==================== SISTEMA DE ROBUSTEZ/FAILSAFE ====================
     
@@ -663,7 +663,7 @@ class PoleCog(commands.Cog):
             h, m, s = [int(x) for x in str(daily_time).split(':')]
             opening_time = datetime(now.year, now.month, now.day, h, m, s)
         except:
-            return
+            return  # Si no se puede parsear la hora, no responder
         
         # Ver si ya abrió o no
         if now < opening_time:
@@ -770,7 +770,7 @@ class PoleCog(commands.Cog):
                     t('migration.in_progress', guild.id)
                 )
             except:
-                pass
+                pass  # Ignorar si no se puede enviar mensaje (permisos, canal eliminado, etc.)
             return
         
         # Verificar si el canal está configurado como canal de pole
@@ -782,7 +782,7 @@ class PoleCog(commands.Cog):
                 try:
                     await message.reply(t('errors.configure_channel', message.guild.id if message.guild else None))
                 except:
-                    pass
+                    pass  # Ignorar si no se puede enviar mensaje
             return
         if message.channel.id != pole_channel_id:
             return
@@ -813,7 +813,7 @@ class PoleCog(commands.Cog):
             try:
                 await message.reply(t('errors.no_time_configured', guild.id))
             except:
-                pass
+                pass  # Ignorar si no se puede enviar mensaje
             return
 
         # Parsear hora de apertura de hoy
@@ -823,7 +823,7 @@ class PoleCog(commands.Cog):
             try:
                 await message.reply(t('errors.invalid_time_config', guild.id))
             except:
-                pass
+                pass  # Ignorar si no se puede enviar mensaje
             return
         
         opening_time_today = datetime(now.year, now.month, now.day, h, m, s)
@@ -853,11 +853,11 @@ class PoleCog(commands.Cog):
                         try:
                             await message.add_reaction('⏳')
                         except:
-                            pass
+                            pass  # Ignorar si no se puede añadir reacción
                         try:
                             await message.reply(t('pole.yesterday_done', guild.id))
                         except:
-                            pass
+                            pass  # Ignorar si no se puede enviar mensaje
                         return
                     else:
                         # Puede hacer marranero (no hizo pole ayer en ningún servidor)
@@ -870,11 +870,11 @@ class PoleCog(commands.Cog):
                     try:
                         await message.add_reaction('⏳')
                     except:
-                        pass
+                        pass  # Ignorar si no se puede añadir reacción
                     try:
                         await message.reply(t('pole.not_yet', guild.id))
                     except:
-                        pass
+                        pass  # Ignorar si no se puede enviar mensaje
                     return
             
             # Si no hay última hora registrada (primer día del servidor), no se puede hacer nada
@@ -883,11 +883,11 @@ class PoleCog(commands.Cog):
                 try:
                     await message.add_reaction('⏳')
                 except:
-                    pass
+                    pass  # Ignorar si no se puede añadir reacción
                 try:
                     await message.reply(t('pole.not_yet', guild.id))
                 except:
-                    pass
+                    pass  # Ignorar si no se puede enviar mensaje
                 return
         
         # Caso B: DESPUÉS de la apertura de hoy (pole normal)
@@ -900,7 +900,7 @@ class PoleCog(commands.Cog):
                 try:
                     await message.add_reaction('🛑')
                 except:
-                    pass
+                    pass  # Ignorar si no se puede añadir reacción
                 try:
                     embed = discord.Embed(
                         description=t('pole.already_done_today', guild.id),
@@ -909,7 +909,7 @@ class PoleCog(commands.Cog):
                     embed.set_image(url="https://i.imgflip.com/37dceb.jpg")
                     await message.reply(embed=embed)
                 except:
-                    pass
+                    pass  # Ignorar si no se puede enviar mensaje
                 return
         
         # ========== PASO 3: Verificación global para poles normales (después de apertura) ==========
@@ -925,13 +925,13 @@ class PoleCog(commands.Cog):
                 try:
                     await message.add_reaction('🚫')
                 except:
-                    pass
+                    pass  # Ignorar si no se puede añadir reacción
                 try:
                     await message.reply(
                         t('pole.already_done_other_server', guild.id, server_name=prev_name)
                     )
                 except:
-                    pass
+                    pass  # Ignorar si no se puede enviar mensaje
                 return
         
         # ========== PASO 4: Procesar el pole ==========
@@ -962,14 +962,14 @@ class PoleCog(commands.Cog):
                 try:
                     await message.add_reaction('⏱️')
                 except:
-                    pass
+                    pass  # Ignorar si no se puede añadir reacción
                 try:
                     await message.reply(
                         t('pole.quota_full', guild.id, 
                           pole_type=pole_name, current=current, max_allowed=max_allowed)
                     )
                 except:
-                    pass
+                    pass  # Ignorar si no se puede enviar mensaje
                 # Degradar a la siguiente categoría
                 if pole_type == 'critical':
                     pole_type = 'fast'
@@ -1122,7 +1122,7 @@ class PoleCog(commands.Cog):
                       points=f"{points_earned:.1f}", streak=new_streak)
                 )
             except:
-                pass
+                pass  # Ignorar si no se puede enviar mensaje
     
     async def handle_early_pole(self, message: discord.Message):
         """
@@ -1132,7 +1132,7 @@ class PoleCog(commands.Cog):
         try:
             await message.add_reaction('🚫')
         except:
-            pass
+            pass  # Ignorar si no se puede añadir reacción
     
     async def send_pole_notification(self, message: discord.Message,
                                      pole_type: str, position: int,
@@ -2107,7 +2107,7 @@ class PoleCog(commands.Cog):
                     inline=True
                 )
         except:
-            pass
+            pass  # Ignorar si no se puede parsear la fecha de fin de temporada
         
         # Stats del usuario en esta temporada
         if season_stats and season_stats.get('season_poles', 0) > 0:
@@ -2239,7 +2239,6 @@ class PoleCog(commands.Cog):
         import random
         from utils.scoring import get_current_season, get_season_info
         
-        now = datetime.now()
         # El decorador @tasks.loop con time=00:00 ya garantiza ejecución a medianoche
         
         # ==================== VERIFICAR CAMBIO DE TEMPORADA ====================
@@ -2394,7 +2393,6 @@ class PoleCog(commands.Cog):
         """
         from utils.scoring import get_season_info
         
-        old_info = get_season_info(old_season_id)
         new_info = get_season_info(new_season_id)
         
         # Detectar si es la transición BETA → Temporada 1
@@ -2875,7 +2873,6 @@ class PoleCog(commands.Cog):
             did_pole_yesterday_global = {row[0] for row in cursor.fetchall()}
 
             # Usuarios que hicieron marranero hoy EN CUALQUIER SERVIDOR (recuperaron el día de ayer)
-            today = datetime.now().strftime('%Y-%m-%d')
             cursor.execute('''
                 SELECT DISTINCT user_id
                 FROM poles
@@ -2978,7 +2975,7 @@ class PoleCog(commands.Cog):
             try:
                 existing.cancel()
             except:
-                pass
+                pass  # Ignorar si la tarea ya estaba cancelada
         
         async def runner():
             try:
@@ -3163,7 +3160,6 @@ class PoleCog(commands.Cog):
         
         # Obtener poles del día ANTERIOR (ya es medianoche del nuevo día)
         yesterday = datetime.now() - timedelta(days=1)
-        today = datetime.now().strftime('%Y-%m-%d')
         yesterday_date = yesterday.strftime('%Y-%m-%d')
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
