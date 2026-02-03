@@ -728,7 +728,7 @@ class DebugCog(commands.Cog):
                 pass  # Ignorar si no se puede parsear el año
         
         try:
-            get_season_info(target_season)  # Validate season exists
+            get_season_info(target_season)  # Validate that target_season exists
         except ValueError as e:
             await interaction.followup.send(
                 f"❌ Error: {e}\n**Formatos válidos:** preseason, season_1, 2026, etc.",
