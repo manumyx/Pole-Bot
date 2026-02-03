@@ -210,23 +210,38 @@ def get_pole_emoji(pole_type: str) -> str:
     }
     return emojis.get(pole_type, '🏁')
 
-def get_pole_name(pole_type: str) -> str:
+def get_pole_name(pole_type: str, guild_id: Optional[int] = None) -> str:
     """
     Obtener el nombre legible del tipo de pole
     
     Args:
         pole_type: Tipo de pole
+        guild_id: ID del servidor (para traducción)
     
     Returns:
-        Nombre del tipo de pole
+        Nombre del tipo de pole traducido
     """
-    names = {
-        'critical': 'CRÍTICA',
-        'fast': 'VELOZ',
-        'normal': 'POLE',
-        'marranero': 'MARRANERO'
-    }
-    return names.get(pole_type, 'POLE')
+    # Importar aquí para evitar circular dependency
+    try:
+        from utils.i18n import t
+        names = {
+            'critical': t('pole.type.critical', guild_id),
+            'fast': t('pole.type.fast', guild_id),
+            'normal': t('pole.type.normal', guild_id),
+            'late': t('pole.type.late', guild_id),
+            'marranero': t('pole.type.marranero', guild_id)
+        }
+        return names.get(pole_type, t('pole.type.normal', guild_id))
+    except:
+        # Fallback si falla la importación
+        names = {
+            'critical': 'CRÍTICA',
+            'fast': 'VELOZ',
+            'normal': 'POLE',
+            'late': 'TARDÍO',
+            'marranero': 'MARRANERO'
+        }
+        return names.get(pole_type, 'POLE')
 
 def check_quota_available(pole_type: str, current_count: int, active_players: int) -> Tuple[bool, int, Optional[int]]:
     """
@@ -294,28 +309,47 @@ def update_streak(last_pole_date: Optional[str], current_streak: int, current_da
     # Si fue hace más tiempo, se rompió la racha
     return 1, True
 
-def get_rank_info(total_points: float) -> Tuple[str, str]:
+def get_rank_info(total_points: float, guild_id: Optional[int] = None) -> Tuple[str, str]:
     """
     Obtener rango e emoji según puntos totales (Sistema de Seasons)
     
     Args:
         total_points: Puntos totales del usuario en la season actual
+        guild_id: ID del servidor (para traducción)
     
     Returns:
         Tupla de (badge_emoji, nombre_rango_completo)
     """
-    if total_points >= RANK_THRESHOLDS['ruby']:
-        return RANK_BADGES['ruby'], RANK_NAMES['ruby']
-    elif total_points >= RANK_THRESHOLDS['amethyst']:
-        return RANK_BADGES['amethyst'], RANK_NAMES['amethyst']
-    elif total_points >= RANK_THRESHOLDS['diamond']:
-        return RANK_BADGES['diamond'], RANK_NAMES['diamond']
-    elif total_points >= RANK_THRESHOLDS['gold']:
-        return RANK_BADGES['gold'], RANK_NAMES['gold']
-    elif total_points >= RANK_THRESHOLDS['silver']:
-        return RANK_BADGES['silver'], RANK_NAMES['silver']
-    else:
-        return RANK_BADGES['bronze'], RANK_NAMES['bronze']
+    # Importar aquí para evitar circular dependency
+    try:
+        from utils.i18n import t
+        
+        if total_points >= RANK_THRESHOLDS['ruby']:
+            return RANK_BADGES['ruby'], t('rank.ruby', guild_id)
+        elif total_points >= RANK_THRESHOLDS['amethyst']:
+            return RANK_BADGES['amethyst'], t('rank.amethyst', guild_id)
+        elif total_points >= RANK_THRESHOLDS['diamond']:
+            return RANK_BADGES['diamond'], t('rank.diamond', guild_id)
+        elif total_points >= RANK_THRESHOLDS['gold']:
+            return RANK_BADGES['gold'], t('rank.gold', guild_id)
+        elif total_points >= RANK_THRESHOLDS['silver']:
+            return RANK_BADGES['silver'], t('rank.silver', guild_id)
+        else:
+            return RANK_BADGES['bronze'], t('rank.bronze', guild_id)
+    except ImportError:
+        # Fallback si falla el import
+        if total_points >= RANK_THRESHOLDS['ruby']:
+            return RANK_BADGES['ruby'], RANK_NAMES['ruby']
+        elif total_points >= RANK_THRESHOLDS['amethyst']:
+            return RANK_BADGES['amethyst'], RANK_NAMES['amethyst']
+        elif total_points >= RANK_THRESHOLDS['diamond']:
+            return RANK_BADGES['diamond'], RANK_NAMES['diamond']
+        elif total_points >= RANK_THRESHOLDS['gold']:
+            return RANK_BADGES['gold'], RANK_NAMES['gold']
+        elif total_points >= RANK_THRESHOLDS['silver']:
+            return RANK_BADGES['silver'], RANK_NAMES['silver']
+        else:
+            return RANK_BADGES['bronze'], RANK_NAMES['bronze']
 
 def get_current_season(db_path: str = "data/pole_bot.db") -> str:
     """

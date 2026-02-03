@@ -5,6 +5,7 @@ Como crear nuevos canales o hilos (por si quieres hacer pole automática)
 import discord
 from discord.ext import commands
 from typing import Optional
+from utils.i18n import t
 
 class EventsCog(commands.Cog):
     def __init__(self, bot):
@@ -12,12 +13,16 @@ class EventsCog(commands.Cog):
 
     def _pick_welcome_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         """Seleccionar canal para mensaje de bienvenida con verificación de permisos."""
-        # Prioriza canales cuyo nombre contiene 'general'
-        for ch in guild.text_channels:
-            if 'general' in ch.name.lower():
-                # Verificar permisos de escritura
-                if ch.permissions_for(guild.me).send_messages:
-                    return ch
+        # Lista de nombres de canales comunes (en orden de prioridad)
+        priority_names = ['general', 'chat', 'comandos', 'commands', 'bot', 'bots', 'off-topic', 'offtopic']
+        
+        # Buscar canales por prioridad
+        for priority_name in priority_names:
+            for ch in guild.text_channels:
+                if priority_name in ch.name.lower():
+                    # Verificar permisos de escritura
+                    if ch.permissions_for(guild.me).send_messages:
+                        return ch
         
         # Fallback: buscar primer canal donde podamos escribir
         for ch in guild.text_channels:
@@ -28,38 +33,27 @@ class EventsCog(commands.Cog):
         return None
 
     async def _send_onboarding_message(self, channel: discord.TextChannel, guild: discord.Guild):
-        """Enviar mensaje inicial explicando pasos de configuración."""
+        """Enviar mensaje inicial BILINGÜE explicando pasos de configuración."""
+        # Construir descripción bilingüe
+        description_es = (
+            t('onboarding.intro', guild.id) +
+            t('onboarding.language_default', guild.id) +
+            t('onboarding.quick_setup', guild.id) +
+            t('onboarding.how_it_works', guild.id) +
+            t('onboarding.commands', guild.id) +
+            t('onboarding.bilingual_notice', guild.id, lang='es')
+        )
+        
         embed = discord.Embed(
-            title="🏁 ¡Gracias por invitarme!",
-            description=(
-                "Soy **Pole Bot**, tu asistente para competir por ser el más rápido cada día.\n\n"
-                "**Configuración rápida (2 pasos):**\n"
-                "1️⃣ Usa `/settings set_channel` para elegir el canal de pole\n"
-                "2️⃣ (Opcional) Configura notificaciones y rol con `/settings`\n\n"
-                "**¿Cómo funciona?**\n"
-                "• Cada día se abre el pole a una hora aleatoria\n"
-                "• El primero en escribir `pole` gana puntos\n"
-                "• Mantén rachas consecutivas para multiplicadores\n"
-                "• Compite localmente y globalmente\n\n"
-                "Usa `/rules` para ver las reglas completas. ¡Suerte! 🏁"
-            ),
+            title=t('onboarding.title', guild.id),
+            description=description_es,
             color=discord.Color.gold()
         )
-        embed.add_field(
-            name="⚙️ Comandos Útiles",
-            value=(
-                "`/settings` - Configurar el bot\n"
-                "`/rules` - Ver reglas del juego\n"
-                "`/profile` - Tu perfil de pole\n"
-                "`/leaderboard` - Rankings del servidor"
-            ),
-            inline=False
-        )
-        embed.set_footer(text="¡Que gane el más rápido! 🔥")
+        embed.set_footer(text=t('onboarding.footer', guild.id))
         
         try:
             await channel.send(embed=embed)
-            print(f"✅ Mensaje de bienvenida enviado a {guild.name} (#{channel.name})")
+            print(f"✅ Mensaje de bienvenida bilingüe enviado a {guild.name} (#{channel.name})")
         except discord.Forbidden:
             print(f"⚠️ Sin permisos para enviar mensaje de bienvenida en {guild.name}")
         except Exception as e:
@@ -77,7 +71,7 @@ class EventsCog(commands.Cog):
         
         try:
             # Esperar un momento para que el canal esté completamente creado
-            await channel.send("🏁 ¡POLE! Primer mensaje en este canal! 🏁")
+            await channel.send(t('events.first_message_channel', channel.guild.id))
             print(f"✅ Pole automática en nuevo canal: {channel.name}")
         except discord.Forbidden:
             print(f"⚠️ Sin permisos para escribir en {channel.name}")
@@ -94,7 +88,7 @@ class EventsCog(commands.Cog):
             await thread.join()
             
             # Escribir el primer mensaje
-            await thread.send("🏁 ¡POLE! Primer mensaje en este hilo! 🏁")
+            await thread.send(t('events.first_message_thread', thread.guild.id))
             print(f"✅ Pole automática en nuevo hilo: {thread.name}")
         except discord.Forbidden:
             print(f"⚠️ Sin permisos para escribir en el hilo {thread.name}")
@@ -153,13 +147,11 @@ class EventsCog(commands.Cog):
     
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
-        """
-        Manejo de errores de comandos
-        """
+        """Manejo de errores de comandos (traducidos)"""
         if isinstance(error, commands.MissingPermissions):
-            await ctx.send("❌ No tienes permisos para usar este comando.")
+            await ctx.send(t('events.error.no_permissions', ctx.guild.id if ctx.guild else None))
         elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"❌ Falta un argumento: {error.param.name}")
+            await ctx.send(t('events.error.missing_arg', ctx.guild.id if ctx.guild else None, arg=error.param.name))
         elif isinstance(error, commands.CommandNotFound):
             # Ignorar comandos no encontrados
             pass

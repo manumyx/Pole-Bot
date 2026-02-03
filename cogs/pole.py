@@ -18,10 +18,58 @@ from utils.scoring import (
     get_pole_name, update_streak, get_rank_info, get_streak_multiplier,
     check_quota_available
 )
+from utils.i18n import t, get_language_name
 
 # Emoji de fuego personalizado (usar en todo el bot)
 FIRE = "<a:fire:1440018375144374302>"
 GRAY_FIRE = "<:gray_fire:1445324596751503485>"
+
+# ==================== HELPER PARA LOCALIZACIONES ====================
+
+def _T(key_es: str, key_en: Optional[str] = None) -> app_commands.locale_str:
+    """
+    Helper para crear locale_str con traducciones español/inglés
+    Discord usa el locale del CLIENTE, no del servidor
+    
+    Args:
+        key_es: Key de traducción en español
+        key_en: Key de traducción en inglés (opcional, usa misma key si no se pasa)
+    """
+    from utils.i18n import TRANSLATIONS
+    
+    if key_en is None:
+        key_en = key_es
+    
+    # DEFAULT es INGLÉS (para todos los idiomas que no sean español)
+    message = app_commands.locale_str(TRANSLATIONS['en'].get(key_en, key_en))
+    # Añadir traducción SOLO para español (España y Latinoamérica)
+    message.extras[discord.Locale.spain_spanish.value] = TRANSLATIONS['es'].get(key_es, TRANSLATIONS['en'].get(key_en, key_en))
+    message.extras[discord.Locale.latin_american_spanish.value] = TRANSLATIONS['es'].get(key_es, TRANSLATIONS['en'].get(key_en, key_en))
+    
+    return message
+
+def _C(key_es: str, value: str, key_en: Optional[str] = None) -> app_commands.Choice[str]:
+    """
+    Helper para crear Choice con nombre en inglés (default)
+    
+    NOTA: Discord.py no soporta bien name_localizations en Choices.
+    Usamos inglés siempre para los nombres de choices (simple y universal).
+    
+    Args:
+        key_es: Key de traducción en español (no usado, por compatibilidad)
+        value: Valor del choice
+        key_en: Key de traducción en inglés (opcional)
+    """
+    from utils.i18n import TRANSLATIONS
+    
+    if key_en is None:
+        key_en = key_es
+    
+    # Siempre en inglés para universalidad
+    return app_commands.Choice(
+        name=TRANSLATIONS['en'].get(key_en, key_en),
+        value=value
+    )
 
 # ==================== VIEWS PARA SETTINGS ====================
 
@@ -33,12 +81,15 @@ class ChannelSelectView(View):
         self.guild_id = guild_id
         self.original_interaction = original_interaction
         
-    @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="Selecciona el canal de pole", channel_types=[discord.ChannelType.text])
+    @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder=t('ui.select_channel', None), channel_types=[discord.ChannelType.text])
     async def channel_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
         channel = select.values[0]
         self.db.init_server(self.guild_id, channel.id)
         self.db.update_server_config(self.guild_id, pole_channel_id=channel.id)
-        await interaction.response.send_message(f"✅ Canal de pole configurado: {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(
+            t('settings.channel_set', self.guild_id, channel=channel.mention),
+            ephemeral=True
+        )
         self.stop()
 
 
@@ -49,21 +100,25 @@ class RoleSelectView(View):
         self.db = db
         self.guild_id = guild_id
         
-    @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="Selecciona el rol para pingear")
+    @discord.ui.select(cls=discord.ui.RoleSelect, placeholder=t('ui.select_role', None))
     async def role_select(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
         role = select.values[0]
         self.db.update_server_config(self.guild_id, ping_role_id=role.id, ping_mode='role')
-        await interaction.response.send_message(f"✅ Rol de ping configurado: {role.mention}", ephemeral=True)
+        await interaction.response.send_message(
+            t('settings.role_set', self.guild_id, role=role.mention),
+            ephemeral=True
+        )
         self.stop()
 
 
 class RepresentSelectView(View):
     """Vista para cambiar representación de servidor"""
-    def __init__(self, db: Database, user_id: int, bot, mutual_guilds: list, current_guild_id: Optional[int]):
+    def __init__(self, db: Database, user_id: int, bot, mutual_guilds: list, current_guild_id: Optional[int], guild_id: int):
         super().__init__(timeout=60)
         self.db = db
         self.user_id = user_id
         self.bot = bot
+        self.guild_id = guild_id  # Para traducciones
         
         # Crear select con opciones
         options = []
@@ -78,7 +133,7 @@ class RepresentSelectView(View):
             )
         
         select = discord.ui.Select(
-            placeholder="Selecciona un servidor...",
+            placeholder=t('ui.select_server', self.guild_id),
             options=options
         )
         
@@ -88,13 +143,58 @@ class RepresentSelectView(View):
             new_guild = self.bot.get_guild(new_guild_id)
             guild_name = new_guild.name if new_guild else f"ID {new_guild_id}"
             await interaction.response.send_message(
-                f"✅ Ahora representas a **{guild_name}** en los rankings globales",
+                t('settings.represent_set', self.guild_id, server=guild_name),
                 ephemeral=True
             )
             self.stop()
         
         select.callback = select_callback
         self.add_item(select)
+
+
+class LanguageSelectView(View):
+    """Vista para cambiar idioma del servidor"""
+    def __init__(self, db: Database, guild_id: int):
+        super().__init__(timeout=60)
+        self.db = db
+        self.guild_id = guild_id
+        
+        # Obtener idioma actual
+        current_lang = db.get_server_language(guild_id)
+        
+        # Crear botones para cada idioma
+        spanish_button = Button(
+            label=t('ui.language.button.es', guild_id),
+            emoji="🇪🇸",
+            style=discord.ButtonStyle.primary if current_lang == 'es' else discord.ButtonStyle.secondary
+        )
+        english_button = Button(
+            label=t('ui.language.button.en', guild_id),
+            emoji="🇬🇧",
+            style=discord.ButtonStyle.primary if current_lang == 'en' else discord.ButtonStyle.secondary
+        )
+        
+        async def spanish_callback(interaction: discord.Interaction):
+            self.db.set_server_language(self.guild_id, 'es')
+            await interaction.response.send_message(
+                t('settings.language_set', guild_id, language='Español'),
+                ephemeral=True
+            )
+            self.stop()
+        
+        async def english_callback(interaction: discord.Interaction):
+            self.db.set_server_language(self.guild_id, 'en')
+            await interaction.response.send_message(
+                t('settings.language_set', guild_id, language='English'),
+                ephemeral=True
+            )
+            self.stop()
+        
+        spanish_button.callback = spanish_callback
+        english_button.callback = english_callback
+        
+        self.add_item(spanish_button)
+        self.add_item(english_button)
 
 
 class SettingsView(View):
@@ -111,46 +211,91 @@ class SettingsView(View):
         options = []
         if self.is_admin:
             options.extend([
-                discord.SelectOption(label="Canal de Pole", description="Cambiar el canal donde se hace pole", emoji="📺", value="channel"),
-                discord.SelectOption(label="Rol de Ping", description="Configurar rol para notificaciones", emoji="🔔", value="ping_role"),
-                discord.SelectOption(label="Quitar Rol de Ping", description="Eliminar rol de ping", emoji="🚫", value="clear_ping"),
-                discord.SelectOption(label="Toggle Notif. Apertura", description="Activar/Desactivar aviso de apertura", emoji="📢", value="notify_opening"),
-                discord.SelectOption(label="Toggle Notif. Ganador", description="Activar/Desactivar aviso de ganador", emoji="🏆", value="notify_winner"),
+                discord.SelectOption(
+                    label=t('ui.option.channel.label', self.guild_id),
+                    description=t('ui.option.channel.desc', self.guild_id),
+                    emoji="📺", value="channel"),
+                discord.SelectOption(
+                    label=t('ui.option.language.label', self.guild_id),
+                    description=t('ui.option.language.desc', self.guild_id),
+                    emoji="🌐", value="language"),
+                discord.SelectOption(
+                    label=t('ui.option.ping_role.label', self.guild_id),
+                    description=t('ui.option.ping_role.desc', self.guild_id),
+                    emoji="🔔", value="ping_role"),
+                discord.SelectOption(
+                    label=t('ui.option.clear_ping.label', self.guild_id),
+                    description=t('ui.option.clear_ping.desc', self.guild_id),
+                    emoji="🚫", value="clear_ping"),
+                discord.SelectOption(
+                    label=t('ui.option.notify_open.label', self.guild_id),
+                    description=t('ui.option.notify_open.desc', self.guild_id),
+                    emoji="📢", value="notify_opening"),
+                discord.SelectOption(
+                    label=t('ui.option.notify_winner.label', self.guild_id),
+                    description=t('ui.option.notify_winner.desc', self.guild_id),
+                    emoji="🏆", value="notify_winner"),
             ])
         # Opción disponible para todos
-        options.append(discord.SelectOption(label="Cambiar Representación", description="Servidor que representas en el ranking global", emoji="🏳️", value="represent"))
+        options.append(discord.SelectOption(
+            label=t('ui.option.represent.label', self.guild_id),
+            description=t('ui.option.represent.desc', self.guild_id),
+            emoji="🏳️", value="represent"))
         
-        select = discord.ui.Select(placeholder="Selecciona qué configurar...", options=options)
+        select = discord.ui.Select(
+            placeholder=t('ui.select_option', self.guild_id),
+            options=options)
         
         async def on_select(interaction: discord.Interaction):
             value = select.values[0]
             # Acciones restringidas a admins
-            admin_only = {"channel", "ping_role", "clear_ping", "notify_opening", "notify_winner"}
+            admin_only = {"channel", "language", "ping_role", "clear_ping", "notify_opening", "notify_winner"}
             if value in admin_only and not self.is_admin:
-                await interaction.response.send_message("❌ Solo administradores pueden cambiar esta opción.", ephemeral=True)
+                await interaction.response.send_message(
+                    t('settings.admin_only', self.guild_id),
+                    ephemeral=True
+                )
                 return
             
             if value == "channel":
                 view = ChannelSelectView(self.db, self.guild_id, interaction)
-                await interaction.response.send_message("📺 Selecciona el canal de pole:", view=view, ephemeral=True)
+                await interaction.response.send_message(t('ui.select_channel_prompt', self.guild_id), view=view, ephemeral=True)
+            elif value == "language":
+                view = LanguageSelectView(self.db, self.guild_id)
+                current_lang = self.db.get_server_language(self.guild_id)
+                lang_name = get_language_name(current_lang)
+                embed = discord.Embed(title=t('ui.language.title', self.guild_id),
+                    description=t('ui.language.desc', self.guild_id, current=lang_name),
+                    color=discord.Color.blue()
+                )
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             elif value == "ping_role":
                 view = RoleSelectView(self.db, self.guild_id)
-                await interaction.response.send_message("🔔 Selecciona el rol para pingear:", view=view, ephemeral=True)
+                await interaction.response.send_message(t('ui.select_role_prompt', self.guild_id), view=view, ephemeral=True)
             elif value == "clear_ping":
                 self.db.update_server_config(self.guild_id, ping_role_id=None, ping_mode='none')
-                await interaction.response.send_message("✅ Rol de ping eliminado", ephemeral=True)
+                await interaction.response.send_message(
+                    t('settings.ping_removed', self.guild_id),
+                    ephemeral=True
+                )
             elif value == "notify_opening":
                 cfg = self.db.get_server_config(self.guild_id) or {}
                 new_val = 0 if cfg.get('notify_opening', 1) else 1
                 self.db.update_server_config(self.guild_id, notify_opening=new_val)
-                estado = "activado" if new_val else "desactivado"
-                await interaction.response.send_message(f"✅ Notificaciones de apertura {estado}", ephemeral=True)
+                msg_key = 'settings.opening_enabled' if new_val else 'settings.opening_disabled'
+                await interaction.response.send_message(
+                    t(msg_key, self.guild_id),
+                    ephemeral=True
+                )
             elif value == "notify_winner":
                 cfg = self.db.get_server_config(self.guild_id) or {}
                 new_val = 0 if cfg.get('notify_winner', 1) else 1
                 self.db.update_server_config(self.guild_id, notify_winner=new_val)
-                estado = "activado" if new_val else "desactivado"
-                await interaction.response.send_message(f"✅ Notificaciones de ganador {estado}", ephemeral=True)
+                msg_key = 'settings.winner_enabled' if new_val else 'settings.winner_disabled'
+                await interaction.response.send_message(
+                    t(msg_key, self.guild_id),
+                    ephemeral=True
+                )
             elif value == "represent":
                 # Obtener servidor actual representado
                 current_guild_id = self.db.get_represented_guild(interaction.user.id)
@@ -165,15 +310,15 @@ class SettingsView(View):
                 
                 if not mutual_guilds:
                     await interaction.response.send_message(
-                        "❌ No estás en ningún servidor donde yo también esté.",
+                        t('errors.no_mutual_servers', self.guild_id),
                         ephemeral=True
                     )
                     return
                 
                 # Crear embed con info actual
                 embed = discord.Embed(
-                    title="🏳️ Cambiar Representación",
-                    description="Selecciona el servidor que quieres representar en los rankings globales.",
+                    title=t('ui.represent.title', self.guild_id),
+                    description=t('ui.represent.desc', self.guild_id),
                     color=discord.Color.blue()
                 )
                 
@@ -181,18 +326,18 @@ class SettingsView(View):
                     current_guild = bot.get_guild(current_guild_id)
                     current_name = current_guild.name if current_guild else f"ID {current_guild_id}"
                     embed.add_field(
-                        name="📍 Actualmente representas",
+                        name=t('ui.represent.current', self.guild_id),
                         value=f"**{current_name}**",
                         inline=False
                     )
                 else:
                     embed.add_field(
-                        name="📍 Actualmente representas",
-                        value="*Ningún servidor configurado*",
+                        name=t('ui.represent.current', self.guild_id),
+                        value=t('ui.represent.none', self.guild_id),
                         inline=False
                     )
                 
-                view = RepresentSelectView(self.db, interaction.user.id, bot, mutual_guilds, current_guild_id)
+                view = RepresentSelectView(self.db, interaction.user.id, bot, mutual_guilds, current_guild_id, self.guild_id)
                 await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         
         select.callback = on_select
@@ -203,15 +348,29 @@ class SettingsView(View):
         cfg = self.db.get_server_config(self.guild_id) or {}
         
         embed = discord.Embed(
-            title="⚙️ Configuración del Pole Bot",
-            description="Selecciona las opciones que quieres modificar usando el menú desplegable",
+            title=t('settings.title', self.guild_id),
+            description=t('ui.settings.desc', self.guild_id),
             color=discord.Color.blurple()
         )
         
         # Canal de pole
         channel_id = cfg.get('pole_channel_id')
-        channel_value = f"<#{channel_id}>" if channel_id else "❌ No configurado"
-        embed.add_field(name="📺 Canal de Pole", value=channel_value, inline=False)
+        channel_value = f"<#{channel_id}>" if channel_id else t('settings.not_configured', self.guild_id)
+        embed.add_field(
+            name=t('settings.field.channel', self.guild_id),
+            value=channel_value,
+            inline=False
+        )
+        
+        # Idioma
+        current_lang = self.db.get_server_language(self.guild_id)
+        lang_name = get_language_name(current_lang)
+        lang_emoji = "🇪🇸" if current_lang == 'es' else "🇬🇧"
+        embed.add_field(
+            name=t('settings.field.language', self.guild_id),
+            value=f"{lang_emoji} {lang_name}",
+            inline=False
+        )
         
         # Servidor representado (personal del usuario)
         represented_guild_id = self.db.get_represented_guild(self.requester.id)
@@ -222,32 +381,51 @@ class SettingsView(View):
             else:
                 represented_value = f"🏳️ *Servidor ID {represented_guild_id}*"
         else:
-            represented_value = "❌ No configurado"
-        embed.add_field(name="🌍 Servidor Representado", value=represented_value, inline=False)
+            represented_value = t('settings.not_configured', self.guild_id)
+        embed.add_field(
+            name=t('settings.field.represented_server', self.guild_id),
+            value=represented_value,
+            inline=False
+        )
         
         # Rol de ping
         role_id = cfg.get('ping_role_id')
-        role_value = f"<@&{role_id}>" if role_id else "❌ No configurado"
-        embed.add_field(name="🔔 Rol de Ping", value=role_value, inline=True)
+        role_value = f"<@&{role_id}>" if role_id else t('settings.not_configured', self.guild_id)
+        embed.add_field(
+            name=t('settings.field.ping_role', self.guild_id),
+            value=role_value,
+            inline=True
+        )
         
         # Notificaciones
-        notify_opening = "✅ Activo" if cfg.get('notify_opening', 1) else "❌ Desactivado"
-        notify_winner = "✅ Activo" if cfg.get('notify_winner', 1) else "❌ Desactivado"
-        embed.add_field(name="📢 Notif. Apertura", value=notify_opening, inline=True)
-        embed.add_field(name="🏆 Notif. Ganador", value=notify_winner, inline=True)
+        notify_opening = t('common.enabled', self.guild_id) if cfg.get('notify_opening', 1) else t('common.disabled', self.guild_id)
+        notify_winner = t('common.enabled', self.guild_id) if cfg.get('notify_winner', 1) else t('common.disabled', self.guild_id)
+        embed.add_field(
+            name=t('settings.field.notify_opening', self.guild_id),
+            value=notify_opening,
+            inline=True
+        )
+        embed.add_field(
+            name=t('settings.field.notify_winner', self.guild_id),
+            value=notify_winner,
+            inline=True
+        )
         
-        embed.set_footer(text="Los cambios se aplican inmediatamente")
+        embed.set_footer(text=t('settings.field.footer', self.guild_id))
         
         return embed
     
-    @discord.ui.button(label="Actualizar Vista", style=discord.ButtonStyle.secondary, emoji="🔄")
+    @discord.ui.button(label=t('button.refresh', None), style=discord.ButtonStyle.secondary, emoji="🔄")
     async def refresh_button(self, interaction: discord.Interaction, button: Button):
         """Refrescar el embed con la configuración actual"""
         if interaction.guild:
             new_embed = self.create_embed(interaction.guild)
             await interaction.response.edit_message(embed=new_embed, view=self)
         else:
-            await interaction.response.send_message("❌ Error al actualizar", ephemeral=True)
+            await interaction.response.send_message(
+                t('settings.update_failed', self.guild_id),
+                ephemeral=True
+            )
     
 
 
@@ -382,15 +560,12 @@ class PoleCog(commands.Cog):
                                 await self._reset_lost_streaks_before_opening(guild_id, channel_id)
                             
                             embed = discord.Embed(
-                                title="🔔 POLE ABIERTO (Recuperación)",
-                                description=(
-                                    f"⚠️ El bot estuvo offline durante la apertura programada.\n"
-                                    f"Escribe **pole** ahora para ganar puntos 🏁"
-                                ),
+                                title=t('notification.pole_open_recovery', guild_id),
+                                description=t('notification.pole_open_recovery_desc', guild_id),
                                 color=discord.Color.orange(),
                                 timestamp=now
                             )
-                            embed.set_footer(text=f"Apertura original: {daily_time}")
+                            embed.set_footer(text=t('notification.recovery_footer', None, time=daily_time))
                             
                             # Ping si está configurado
                             content = None
@@ -494,10 +669,13 @@ class PoleCog(commands.Cog):
         if now < opening_time:
             # Aún no abre - NO decimos la hora, solo vacilamos
             responses = [
-                "Aún no toca crack, sé que no vas a llegar a tiempo",
-                "Tranqui bro, cuando abra te enteras... o no 🧑‍🦯",
-                "El que pregunta, no llega. Así funciona esto",
-                "Bro preguntando la hora como si fuera a llegar",
+                t('pole.impatient.1', guild.id),
+                t('pole.impatient.2', guild.id),
+                t('pole.impatient.3', guild.id),
+                t('pole.impatient.4', guild.id),
+                t('pole.impatient.5', guild.id),
+                t('pole.impatient.6', guild.id),
+                t('pole.impatient.7', guild.id),
             ]
             embed = discord.Embed(
                 description=random.choice(responses),
@@ -589,9 +767,7 @@ class PoleCog(commands.Cog):
         if server_config.get('migration_in_progress', 0):
             try:
                 await message.reply(
-                    "⚠️ **Migración de temporada en progreso**\n\n"
-                    "El sistema de poles está temporalmente deshabilitado mientras se migra a la nueva temporada.\n"
-                    "Vuelve en unos minutos."
+                    t('migration.in_progress', guild.id)
                 )
             except:
                 pass
@@ -604,7 +780,7 @@ class PoleCog(commands.Cog):
         if not pole_channel_id:
             if isinstance(message.author, discord.Member) and message.author.guild_permissions.administrator:
                 try:
-                    await message.reply("⚙️ Configura primero el canal de pole con `/settings`.")
+                    await message.reply(t('errors.configure_channel', message.guild.id if message.guild else None))
                 except:
                     pass
             return
@@ -635,7 +811,7 @@ class PoleCog(commands.Cog):
         # ========== PASO 1: Verificar configuración ==========
         if not daily_time:
             try:
-                await message.reply("⚠️ No hay hora de pole configurada para hoy.")
+                await message.reply(t('errors.no_time_configured', guild.id))
             except:
                 pass
             return
@@ -645,7 +821,7 @@ class PoleCog(commands.Cog):
             h, m, s = [int(x) for x in str(daily_time).split(':')]
         except Exception:
             try:
-                await message.reply("⚠️ Config de hora diaria inválida. Contacta a un admin.")
+                await message.reply(t('errors.invalid_time_config', guild.id))
             except:
                 pass
             return
@@ -669,25 +845,25 @@ class PoleCog(commands.Cog):
                     opening_time_yesterday = datetime(yesterday.year, yesterday.month, yesterday.day, last_h, last_m, 0)
                     yesterday_str = yesterday.strftime('%Y-%m-%d')
                     
-                    # ¿Ya hizo pole AYER? Si sí, no puede hacer marranero
-                    user_did_pole_yesterday = self.db.user_has_pole_on_date(message.author.id, guild.id, yesterday_str)
+                    # PRIMERO: Verificar si hizo pole AYER en CUALQUIER servidor (validación global)
+                    global_pole_yesterday = self.db.get_user_pole_on_date_global(message.author.id, yesterday_str)
                     
-                    if not user_did_pole_yesterday:
-                        # Puede hacer marranero
-                        use_marranero = True
-                        opening_time = opening_time_yesterday
-                        effective_date = yesterday_str
-                    else:
-                        # Ya hizo pole ayer, tiene que esperar al de hoy
+                    if global_pole_yesterday:
+                        # Ya hizo pole ayer (en este u otro servidor), tiene que esperar al de hoy
                         try:
                             await message.add_reaction('⏳')
                         except:
                             pass
                         try:
-                            await message.reply("🧑‍🦯 Crack, ya hiciste tu pole ayer. Espera a que abra el de hoy.")
+                            await message.reply(t('pole.yesterday_done', guild.id))
                         except:
                             pass
                         return
+                    else:
+                        # Puede hacer marranero (no hizo pole ayer en ningún servidor)
+                        use_marranero = True
+                        opening_time = opening_time_yesterday
+                        effective_date = yesterday_str
                 except Exception:
                     # Si falla al parsear la hora de ayer, no se puede hacer marranero
                     self.db.increment_impatient_attempts(message.author.id, guild.id)
@@ -696,7 +872,7 @@ class PoleCog(commands.Cog):
                     except:
                         pass
                     try:
-                        await message.reply("🧑‍🦯 Crack, aún no toca polear.")
+                        await message.reply(t('pole.not_yet', guild.id))
                     except:
                         pass
                     return
@@ -709,7 +885,7 @@ class PoleCog(commands.Cog):
                 except:
                     pass
                 try:
-                    await message.reply("🧑‍🦯 Crack, aún no toca polear.")
+                    await message.reply(t('pole.not_yet', guild.id))
                 except:
                     pass
                 return
@@ -727,7 +903,7 @@ class PoleCog(commands.Cog):
                     pass
                 try:
                     embed = discord.Embed(
-                        description="Bro, ya hiciste tu pole hoy aquí. Tranqui 🛑",
+                        description=t('pole.already_done_today', guild.id),
                         color=discord.Color.orange()
                     )
                     embed.set_image(url="https://i.imgflip.com/37dceb.jpg")
@@ -736,27 +912,27 @@ class PoleCog(commands.Cog):
                     pass
                 return
         
-        # ========== PASO 3: Verificación global (1 pole al día en cualquier servidor) ==========
-        # Verificar que no haya hecho pole en la fecha efectiva (ayer para marranero, hoy para normal)
-        # Esto asegura que solo puedas hacer 1 pole por día, sin importar el servidor
-        global_pole = self.db.get_user_pole_on_date_global(message.author.id, effective_date)
-        if global_pole and int(global_pole.get('guild_id', 0)) != guild.id:
-            # Incrementar stat secreta de intentos impacientes
-            self.db.increment_impatient_attempts(message.author.id, guild.id)
-            prev_guild = self.bot.get_guild(int(global_pole['guild_id']))
-            prev_name = prev_guild.name if prev_guild else f"ID {global_pole['guild_id']}"
-            try:
-                await message.add_reaction('🚫')
-            except:
-                pass
-            try:
-                await message.reply(
-                    f"❌ Ya hiciste pole en otro servidor.\n"
-                    f"Te vimos en **{prev_name}**; mañana más suerte."
-                )
-            except:
-                pass
-            return
+        # ========== PASO 3: Verificación global para poles normales (después de apertura) ==========
+        # Para marranero ya se verificó arriba. Aquí solo verificamos poles normales.
+        if not use_marranero:
+            # Verificar que no haya hecho pole HOY en cualquier servidor
+            global_pole = self.db.get_user_pole_on_date_global(message.author.id, effective_date)
+            if global_pole and int(global_pole.get('guild_id', 0)) != guild.id:
+                # Ya hizo pole hoy en otro servidor
+                self.db.increment_impatient_attempts(message.author.id, guild.id)
+                prev_guild = self.bot.get_guild(int(global_pole['guild_id']))
+                prev_name = prev_guild.name if prev_guild else f"ID {global_pole['guild_id']}"
+                try:
+                    await message.add_reaction('🚫')
+                except:
+                    pass
+                try:
+                    await message.reply(
+                        t('pole.already_done_other_server', guild.id, server_name=prev_name)
+                    )
+                except:
+                    pass
+                return
         
         # ========== PASO 4: Procesar el pole ==========
         # Obtener poles del día para posición
@@ -782,15 +958,15 @@ class PoleCog(commands.Cog):
             has_quota, current, max_allowed = check_quota_available(pole_type, poles_of_type, active_players)
             
             if not has_quota:
-                pole_name = get_pole_name(pole_type)
+                pole_name = get_pole_name(pole_type, guild.id)
                 try:
                     await message.add_reaction('⏱️')
                 except:
                     pass
                 try:
                     await message.reply(
-                        f"⚠️ La cuota de **{pole_name}** está llena ({current}/{max_allowed}).\n"
-                        f"Se te asignará la siguiente categoría disponible."
+                        t('pole.quota_full', guild.id, 
+                          pole_type=pole_name, current=current, max_allowed=max_allowed)
                     )
                 except:
                     pass
@@ -935,14 +1111,15 @@ class PoleCog(commands.Cog):
             await self.send_pole_notification(
                 message, pole_type, position, points_base,
                 streak_multiplier, points_earned, new_streak,
-                streak_broken, now, delay_minutes
+                streak_broken, now, delay_minutes, guild.id
             )
         except Exception as e:
             print(f"❌ Error enviando notificación de pole: {e}")
             # Intentar enviar mensaje simple como fallback
             try:
                 await message.reply(
-                    f"🏁 Pole pillado: +{points_earned:.1f} pts • Racha {new_streak}"
+                    t('pole.success_short', guild.id, 
+                      points=f"{points_earned:.1f}", streak=new_streak)
                 )
             except:
                 pass
@@ -962,7 +1139,7 @@ class PoleCog(commands.Cog):
                                      points_base: float, multiplier: float,
                                      points_earned: float, streak: int,
                                      streak_broken: bool, timestamp: datetime,
-                                     delay_minutes: int):
+                                     delay_minutes: int, guild_id: int):
         """
         Enviar notificación de victoria con personalidad
         """
@@ -973,7 +1150,7 @@ class PoleCog(commands.Cog):
                 return f"{h}h {m}m" if m > 0 else f"{h}h"
             return f"{m}m"
         emoji = get_pole_emoji(pole_type)
-        name = get_pole_name(pole_type)
+        name = get_pole_name(pole_type, guild_id)
         
         # Crear embed
         embed = discord.Embed(
@@ -984,11 +1161,11 @@ class PoleCog(commands.Cog):
         
         # Mensaje personalizado según tipo
         descriptions = {
-            'critical': f"{message.author.mention} ¡ahí, al tiro!",
-            'fast': f"{message.author.mention} rapidísimo ⚡",
-            'normal': f"{message.author.mention}",
-            'late': f"{message.author.mention} llegaste tarde ⏳",
-            'marranero': f"{message.author.mention} ya era hora 🐷"
+            'critical': t('pole.notification.description_critical', guild_id, mention=message.author.mention),
+            'fast': t('pole.notification.description_fast', guild_id, mention=message.author.mention),
+            'normal': t('pole.notification.description_normal', guild_id, mention=message.author.mention),
+            'late': t('pole.notification.description_late', guild_id, mention=message.author.mention),
+            'marranero': t('pole.notification.description_marranero', guild_id, mention=message.author.mention)
         }
         description = descriptions.get(pole_type, f"{message.author.mention}")
         
@@ -996,13 +1173,13 @@ class PoleCog(commands.Cog):
         
         # Información de tiempo
         time_str = timestamp.strftime('%H:%M:%S')
-        embed.add_field(name="⏱️ Hora", value=time_str, inline=True)
-        embed.add_field(name="⏳ Retraso", value=format_delay(delay_minutes), inline=True)
-        embed.add_field(name="📍 Posición", value=f"#{position}", inline=True)
+        embed.add_field(name=t('pole.field.time', guild_id), value=time_str, inline=True)
+        embed.add_field(name=t('pole.field.delay', guild_id), value=format_delay(delay_minutes), inline=True)
+        embed.add_field(name=t('pole.field.position', guild_id), value=f"#{position}", inline=True)
         
         # Información de puntos
         embed.add_field(
-            name="💰 Puntos Base",
+            name=t('pole.field.base_points', guild_id),
             value=f"{points_base:.1f} pts",
             inline=True
         )
@@ -1011,30 +1188,30 @@ class PoleCog(commands.Cog):
         streak_emoji = FIRE if streak > 1 else GRAY_FIRE
         if streak > 1:
             embed.add_field(
-                name=f"{streak_emoji} Racha x{multiplier:.1f}",
-                value=f"{streak} días",
+                name=t('pole.field.streak_multi', guild_id, emoji=streak_emoji, multiplier=f"{multiplier:.1f}"),
+                value=t('pole.field.streak_days', guild_id, days=streak),
                 inline=True
             )
         else:
             embed.add_field(
-                name=f"{streak_emoji} Racha",
-                value="1 día",
+                name=t('pole.field.streak', guild_id, emoji=streak_emoji),
+                value=t('pole.field.streak_one_day', guild_id),
                 inline=True
             )
         
         embed.add_field(
-            name="🎯 Total Ganado",
+            name=t('pole.field.total_earned', guild_id),
             value=f"**{points_earned:.1f} pts**",
             inline=True
         )
         
         # Mensaje final con personalidad
         footer_messages = {
-            'critical': "imparable",
-            'fast': "bien jugado 👏",
-            'normal': "así se hace 🤝",
-            'late': "truco pero vale 😅",
-            'marranero': "mañana madruga más 🥱"
+            'critical': t('pole.footer.critical', guild_id),
+            'fast': t('pole.footer.fast', guild_id),
+            'normal': t('pole.footer.normal', guild_id),
+            'late': t('pole.footer.late', guild_id),
+            'marranero': t('pole.footer.marranero', guild_id)
         }
         
         embed.set_footer(text=footer_messages.get(pole_type, ""))
@@ -1042,8 +1219,8 @@ class PoleCog(commands.Cog):
         # Si se rompió una racha larga, avisar
         if streak_broken and streak > 7:
             embed.add_field(
-                name="💔 Racha Anterior",
-                value=f"Conservas el 20% de tu racha anterior",
+                name=t('pole.field.streak_broken_title', guild_id),
+                value=t('pole.field.streak_broken_desc', guild_id),
                 inline=False
             )
         
@@ -1062,29 +1239,29 @@ class PoleCog(commands.Cog):
     
     # ==================== COMANDOS SLASH ====================
 
-    @app_commands.command(name="settings", description="Configurar opciones del Pole Bot (vista según permisos)")
+    @app_commands.command(name="settings", description=_T('cmd.settings.desc'))
     async def settings(self, interaction: discord.Interaction):
         """Comando único para configurar el bot con una interfaz interactiva"""
         if interaction.guild is None:
-            await interaction.response.send_message("❌ Solo en servidores.", ephemeral=True)
+            await interaction.response.send_message(t('errors.server_only_short', None), ephemeral=True)
             return
         
         member = interaction.user if isinstance(interaction.user, discord.Member) else interaction.guild.get_member(interaction.user.id)
         if member is None:
-            await interaction.response.send_message("❌ No se pudo determinar tus permisos en este servidor.", ephemeral=True)
+            await interaction.response.send_message(t('errors.no_permissions_check', interaction.guild.id), ephemeral=True)
             return
         view = SettingsView(self.db, interaction.guild.id, member)
         embed = view.create_embed(interaction.guild)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
-    @app_commands.command(name="profile", description="Ver estadísticas de un usuario")
+    @app_commands.command(name="profile", description=_T('cmd.profile.desc'))
     @app_commands.describe(
-        usuario="Usuario del que ver perfil (opcional)",
-        alcance="Alcance: global (todos los servidores) o local (solo este servidor)"
+        usuario=_T('cmd.profile.user_param'),
+        alcance=_T('cmd.profile.scope_param')
     )
     @app_commands.choices(alcance=[
-        app_commands.Choice(name="Global (todos los servidores)", value="global"),
-        app_commands.Choice(name="Local (solo este servidor)", value="local")
+        _C('choice.scope.global', 'global'),
+        _C('choice.scope.local', 'local')
     ])
     async def profile(
         self, 
@@ -1108,7 +1285,8 @@ class PoleCog(commands.Cog):
             
             if not global_stats or global_stats['total_poles'] == 0:
                 await interaction.followup.send(
-                    f"❌ {target_user.mention} no tiene datos todavía. ¡Haz tu primer pole!",
+                    t('profile.no_data_global', interaction.guild.id if interaction.guild else None, 
+                      mention=target_user.mention),
                     ephemeral=True
                 )
                 return
@@ -1141,12 +1319,13 @@ class PoleCog(commands.Cog):
                 current_season_points = current_season['total_points'] if current_season and current_season['total_points'] else 0.0
                 current_season_poles = current_season['total_poles'] if current_season and current_season['total_poles'] else 0
             
-            rank_emoji, rank_name = get_rank_info(best_season_points)
+            rank_emoji, rank_name = get_rank_info(best_season_points, interaction.guild.id if interaction.guild else None)
             
             # Crear embed
             embed = discord.Embed(
-                title=f"🌍 Estadísticas Globales de {target_user.display_name}",
-                description="*Datos combinados de todos los servidores*",
+                title=t('profile.title_global', interaction.guild.id if interaction.guild else None, 
+                        display_name=target_user.display_name),
+                description=t('profile.desc_global', interaction.guild.id if interaction.guild else None),
                 color=discord.Color.blue(),
                 timestamp=datetime.now()
             )
@@ -1155,30 +1334,32 @@ class PoleCog(commands.Cog):
             
             # Mostrar badge de temporada actual si existe
             if current_season_poles > 0:
-                season_rank_emoji, season_rank_name = get_rank_info(current_season_points)
+                season_rank_emoji, season_rank_name = get_rank_info(current_season_points, interaction.guild.id if interaction.guild else None)
                 embed.add_field(
-                    name="🎖️ Temporada Actual",
-                    value=f"{season_rank_emoji} **{season_rank_name}**\n💰 {current_season_points:.1f} pts esta temporada",
+                    name=t('profile.field.season_current', interaction.guild.id if interaction.guild else None),
+                    value=t('profile.field.season_rank_value', interaction.guild.id if interaction.guild else None,
+                            emoji=season_rank_emoji, name=season_rank_name, points=f"{current_season_points:.1f}"),
                     inline=False
                 )
             
             # Rango Histórico (basado en mejor temporada)
             embed.add_field(
-                name="🏆 Rango Histórico",
-                value=f"{rank_emoji} **{rank_name}**\n(Mejor temporada: {best_season_points:.1f} pts)",
+                name=t('profile.field.rank_historical', interaction.guild.id if interaction.guild else None),
+                value=t('profile.field.rank_value', interaction.guild.id if interaction.guild else None,
+                        emoji=rank_emoji, name=rank_name, best_points=f"{best_season_points:.1f}"),
                 inline=True
             )
             
             # Puntos totales
             embed.add_field(
-                name="💰 Puntos Totales",
+                name=t('profile.field.total_points', interaction.guild.id if interaction.guild else None),
                 value=f"**{global_stats['total_points']:.1f}** pts",
                 inline=True
             )
             
             # Poles totales
             embed.add_field(
-                name="🏁 Poles Totales",
+                name=t('profile.field.total_poles', interaction.guild.id if interaction.guild else None),
                 value=f"**{global_stats['total_poles']}**",
                 inline=True
             )
@@ -1187,8 +1368,10 @@ class PoleCog(commands.Cog):
             current_streak = global_user['current_streak'] if global_user else 0
             streak_emoji = FIRE if current_streak > 0 else GRAY_FIRE
             embed.add_field(
-                name=f"{streak_emoji} Racha Actual",
-                value=f"**{current_streak}** días",
+                name=t('profile.field.current_streak', interaction.guild.id if interaction.guild else None, 
+                       emoji=streak_emoji),
+                value=t('profile.field.streak_days', interaction.guild.id if interaction.guild else None, 
+                        days=current_streak),
                 inline=True
             )
             
@@ -1196,31 +1379,36 @@ class PoleCog(commands.Cog):
             best_streak = global_user['best_streak'] if global_user else 0
             best_streak_emoji = FIRE if best_streak > 0 else GRAY_FIRE
             embed.add_field(
-                name=f"{best_streak_emoji} Mejor Racha",
-                value=f"**{best_streak}** días",
+                name=t('profile.field.best_streak', interaction.guild.id if interaction.guild else None, 
+                       emoji=best_streak_emoji),
+                value=t('profile.field.streak_days', interaction.guild.id if interaction.guild else None, 
+                        days=best_streak),
                 inline=True
             )
             
             # Desglose por tipo (GLOBAL)
-            breakdown = (
-                f"💎 Críticas: **{global_stats.get('critical_poles', 0)}**\n"
-                f"⚡ Veloz: **{global_stats.get('fast_poles', 0)}**\n"
-                f"🏁 Normales: **{global_stats.get('normal_poles', 0)}**\n"
-                f"🐷 Marraneros: **{global_stats.get('marranero_poles', 0)}**"
-            )
+            breakdown = t('profile.breakdown', interaction.guild.id if interaction.guild else None,
+                         critical=global_stats.get('critical_poles', 0),
+                         fast=global_stats.get('fast_poles', 0),
+                         normal=global_stats.get('normal_poles', 0),
+                         marranero=global_stats.get('marranero_poles', 0))
             embed.add_field(
-                name="📈 Desglose de Poles",
+                name=t('profile.field.breakdown', interaction.guild.id if interaction.guild else None),
                 value=breakdown,
                 inline=False
             )
             
             # Último pole (GLOBAL, puede ser de cualquier servidor)
             footer_text = ""
+            guild_id = interaction.guild.id if interaction.guild else None
             if global_user and global_user['last_pole_date']:
                 last_date = datetime.strptime(global_user['last_pole_date'], '%Y-%m-%d')
-                footer_text = f"Último pole: {last_date.strftime('%d/%m/%Y')}"
+                footer_text = t('profile.footer.last_pole', guild_id, date=last_date.strftime('%d/%m/%Y'))
             
-            footer_text += f" • Usa /profile alcance:local para ver stats de este servidor"
+            if footer_text:
+                footer_text += " • " + t('leaderboard.footer.use_local', guild_id)
+            else:
+                footer_text = t('leaderboard.footer.use_local', guild_id)
             embed.set_footer(text=footer_text)
             
             await interaction.followup.send(embed=embed)
@@ -1228,7 +1416,7 @@ class PoleCog(commands.Cog):
         # ==================== ALCANCE LOCAL ====================
         else:  # alcance == "local"
             if interaction.guild is None:
-                await interaction.followup.send("❌ El alcance local solo funciona en servidores.", ephemeral=True)
+                await interaction.followup.send(t('errors.command_server_only', None), ephemeral=True)
                 return
             
             gid = interaction.guild.id
@@ -1239,7 +1427,7 @@ class PoleCog(commands.Cog):
             
             if not user_data or user_data['total_poles'] == 0:
                 await interaction.followup.send(
-                    f"❌ {target_user.mention} no ha hecho ningún pole en este servidor.",
+                    t('profile.no_data_local', gid, mention=target_user.mention),
                     ephemeral=True
                 )
                 return
@@ -1250,12 +1438,13 @@ class PoleCog(commands.Cog):
             
             # Obtener rango histórico basado en el mejor desempeño en cualquier temporada (SOLO este servidor)
             best_season_points = self.db.get_user_best_season_points(target_user.id, gid)
-            rank_emoji, rank_name = get_rank_info(best_season_points)
+            rank_emoji, rank_name = get_rank_info(best_season_points, gid)
             
             # Crear embed
             embed = discord.Embed(
-                title=f"📊 Stats de {target_user.display_name} en {interaction.guild.name}",
-                description=f"*Datos solo de este servidor • Las rachas son globales*",
+                title=t('profile.title_local', gid, display_name=target_user.display_name, 
+                        guild_name=interaction.guild.name),
+                description=t('profile.desc_local', gid),
                 color=discord.Color.green(),
                 timestamp=datetime.now()
             )
@@ -1264,30 +1453,32 @@ class PoleCog(commands.Cog):
             
             # Mostrar badge de temporada actual si existe
             if season_stats and season_stats.get('season_poles', 0) > 0:
-                season_rank_emoji, season_rank_name = get_rank_info(season_stats['season_points'])
+                season_rank_emoji, season_rank_name = get_rank_info(season_stats['season_points'], gid)
                 embed.add_field(
-                    name="🎖️ Temporada Actual (servidor)",
-                    value=f"{season_rank_emoji} **{season_rank_name}**\n💰 {season_stats['season_points']:.1f} pts esta temporada",
+                    name=t('profile.field.season_current', gid),
+                    value=t('profile.field.season_rank_value', gid,
+                            emoji=season_rank_emoji, name=season_rank_name, points=f"{season_stats['season_points']:.1f}"),
                     inline=False
                 )
             
             # Rango Histórico (basado en mejor temporada EN ESTE SERVIDOR)
             embed.add_field(
-                name="🏆 Rango Histórico (servidor)",
-                value=f"{rank_emoji} **{rank_name}**\n(Mejor temporada: {best_season_points:.1f} pts)",
+                name=t('profile.field.rank_historical_server', gid),
+                value=t('profile.field.rank_value', gid,
+                        emoji=rank_emoji, name=rank_name, best_points=f"{best_season_points:.1f}"),
                 inline=True
             )
             
             # Puntos totales EN ESTE SERVIDOR
             embed.add_field(
-                name="💰 Puntos (servidor)",
+                name=t('profile.field.points_server', gid),
                 value=f"**{user_data['total_points']:.1f}** pts",
                 inline=True
             )
             
             # Poles totales EN ESTE SERVIDOR
             embed.add_field(
-                name="🏁 Poles (servidor)",
+                name=t('profile.field.poles_server', gid),
                 value=f"**{user_data['total_poles']}**",
                 inline=True
             )
@@ -1296,8 +1487,8 @@ class PoleCog(commands.Cog):
             current_streak = global_user['current_streak'] if global_user else 0
             streak_emoji = FIRE if current_streak > 0 else GRAY_FIRE
             embed.add_field(
-                name=f"{streak_emoji} Racha Actual (global)",
-                value=f"**{current_streak}** días",
+                name=t('profile.field.current_streak_global', gid, emoji=streak_emoji),
+                value=t('profile.field.streak_days', gid, days=current_streak),
                 inline=True
             )
             
@@ -1305,46 +1496,45 @@ class PoleCog(commands.Cog):
             best_streak = global_user['best_streak'] if global_user else 0
             best_streak_emoji = FIRE if best_streak > 0 else GRAY_FIRE
             embed.add_field(
-                name=f"{best_streak_emoji} Mejor Racha (global)",
-                value=f"**{best_streak}** días",
+                name=t('profile.field.best_streak_global', gid, emoji=best_streak_emoji),
+                value=t('profile.field.streak_days', gid, days=best_streak),
                 inline=True
             )
             
             # Desglose por tipo (SOLO ESTE SERVIDOR)
-            breakdown = (
-                f"💎 Críticas: **{user_data.get('critical_poles', 0)}**\n"
-                f"⚡ Veloz: **{user_data.get('fast_poles', 0)}**\n"
-                f"🏁 Normales: **{user_data.get('normal_poles', 0)}**\n"
-                f"🐷 Marraneros: **{user_data.get('marranero_poles', 0)}**"
-            )
+            breakdown = t('profile.breakdown', gid,
+                         critical=user_data.get('critical_poles', 0),
+                         fast=user_data.get('fast_poles', 0),
+                         normal=user_data.get('normal_poles', 0),
+                         marranero=user_data.get('marranero_poles', 0))
             embed.add_field(
-                name="📈 Desglose de Poles (servidor)",
+                name=t('profile.field.breakdown_server', gid),
                 value=breakdown,
                 inline=False
             )
             
             # Footer
-            footer_text = f"Usa /profile alcance:global para ver estadísticas globales"
+            footer_text = t('leaderboard.footer.use_global', gid)
             embed.set_footer(text=footer_text)
             
             await interaction.followup.send(embed=embed)
     
-    @app_commands.command(name="leaderboard", description="Ver ranking de poles")
+    @app_commands.command(name="leaderboard", description=_T('cmd.leaderboard.desc'))
     @app_commands.describe(
-        alcance="Alcance del ranking: local (este servidor) o global (todos los servidores)",
-        tipo="Tipo de ranking: personas, servidores o rachas",
-        temporada="Temporada a mostrar (Lifetime por defecto)",
-        limite="Cantidad de entradas a mostrar (por defecto 10)"
+        alcance=_T('cmd.leaderboard.scope_param'),
+        tipo=_T('cmd.leaderboard.type_param'),
+        temporada=_T('cmd.leaderboard.season_param'),
+        limite=_T('cmd.leaderboard.limit_param')
     )
     @app_commands.choices(
         alcance=[
-            app_commands.Choice(name="Local", value="local"),
-            app_commands.Choice(name="Global", value="global")
+            _C('choice.local', 'local'),
+            _C('choice.global', 'global')
         ],
         tipo=[
-            app_commands.Choice(name="Personas", value="personas"),
-            app_commands.Choice(name="Servidores", value="servers"),
-            app_commands.Choice(name="Rachas", value="rachas")
+            _C('choice.personas', 'personas'),
+            _C('choice.servidores', 'servers'),
+            _C('choice.rachas', 'rachas')
         ]
     )
     async def leaderboard(
@@ -1361,7 +1551,7 @@ class PoleCog(commands.Cog):
         
         if limite < 1 or limite > 25:
             await interaction.followup.send(
-                "❌ El límite debe estar entre 1 y 25.",
+                t('leaderboard.error_limit', interaction.guild.id if interaction.guild else None),
                 ephemeral=True
             )
             return
@@ -1386,7 +1576,7 @@ class PoleCog(commands.Cog):
         # LOCAL + PERSONAS
         if alcance == "local" and tipo == "personas":
             if interaction.guild is None:
-                await interaction.followup.send("❌ Este comando solo funciona en servidores.", ephemeral=True)
+                await interaction.followup.send(t('errors.command_server_only', None), ephemeral=True)
                 return
             gid = interaction.guild.id
             
@@ -1407,14 +1597,14 @@ class PoleCog(commands.Cog):
             
             if not top_users:
                 await interaction.followup.send(
-                    f"❌ Aún no hay estadísticas {'de esta temporada ' if not is_lifetime else ''}en este servidor.",
+                    t('leaderboard.no_data_local', gid, season_info='de esta temporada ' if not is_lifetime else ''),
                     ephemeral=True
                 )
                 return
             
             embed = discord.Embed(
-                title=f"🏆 RANKING LOCAL - Personas - {title_suffix}",
-                description=f"Servidor: {interaction.guild.name}",
+                title=t('leaderboard.title.local_people', gid, season=title_suffix),
+                description=t('leaderboard.desc.local_people', gid, server=interaction.guild.name),
                 color=discord.Color.gold(),
                 timestamp=datetime.now()
             )
@@ -1423,7 +1613,7 @@ class PoleCog(commands.Cog):
             for idx, user_data in enumerate(top_users, start=1):
                 points = user_data.get(points_key, 0)
                 poles = user_data.get(poles_key, 0)
-                rank_emoji, _ = get_rank_info(points)
+                rank_emoji, _ = get_rank_info(points, gid)
                 position_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(idx, f"{idx}.")
                 
                 # Racha solo para lifetime
@@ -1462,7 +1652,7 @@ class PoleCog(commands.Cog):
                         None
                     )
                     if user_position:
-                        embed.set_footer(text=f"Tu posición: #{user_position} de {len(all_users)}")
+                        embed.set_footer(text=t('leaderboard.footer.position', gid, pos=user_position, total=len(all_users)))
             else:
                 user_data = self.db.get_season_stats(interaction.user.id, gid, season_id)
                 if user_data:
@@ -1472,12 +1662,12 @@ class PoleCog(commands.Cog):
                         None
                     )
                     if user_position:
-                        embed.set_footer(text=f"Tu posición en {title_suffix}: #{user_position} de {len(all_users)}")
+                        embed.set_footer(text=t('leaderboard.footer.position_season', gid, season=title_suffix, pos=user_position, total=len(all_users)))
         
         # LOCAL + SERVIDORES
         elif alcance == "local" and tipo == "servers":
             if interaction.guild is None:
-                await interaction.followup.send("❌ Este comando solo funciona en servidores.", ephemeral=True)
+                await interaction.followup.send(t('errors.command_server_only', None), ephemeral=True)
                 return
             gid = interaction.guild.id
             
@@ -1493,14 +1683,14 @@ class PoleCog(commands.Cog):
             
             if not top_servers:
                 await interaction.followup.send(
-                    f"❌ Aún no hay servidores representados {'en esta temporada' if not is_lifetime else ''}.",
+                    t('leaderboard.no_data_servers', gid, season_info='en esta temporada' if not is_lifetime else ''),
                     ephemeral=True
                 )
                 return
             
             embed = discord.Embed(
-                title=f"🏆 RANKING LOCAL - Servidores - {title_suffix}",
-                description=f"Servidores representados por miembros de {interaction.guild.name}",
+                title=t('leaderboard.title.local_servers', gid, season=title_suffix),
+                description=t('leaderboard.desc.local_servers', gid, server=interaction.guild.name),
                 color=discord.Color.blue(),
                 timestamp=datetime.now()
             )
@@ -1522,7 +1712,7 @@ class PoleCog(commands.Cog):
         # LOCAL + RACHAS (muestra rachas GLOBALES de usuarios de este servidor)
         elif alcance == "local" and tipo == "rachas":
             if interaction.guild is None:
-                await interaction.followup.send("❌ Este comando solo funciona en servidores.", ephemeral=True)
+                await interaction.followup.send(t('errors.command_server_only', None), ephemeral=True)
                 return
             gid = interaction.guild.id
             
@@ -1530,7 +1720,7 @@ class PoleCog(commands.Cog):
             local_users = self.db.get_leaderboard(gid, limit=1000, order_by='points')
             if not local_users:
                 await interaction.followup.send(
-                    "❌ Aún no hay usuarios en este servidor.",
+                    t('errors.no_users', gid),
                     ephemeral=True
                 )
                 return
@@ -1550,14 +1740,14 @@ class PoleCog(commands.Cog):
             
             if not top_users:
                 await interaction.followup.send(
-                    "❌ Aún no hay usuarios con rachas en este servidor.",
+                    t('errors.no_streaks', gid),
                     ephemeral=True
                 )
                 return
             
             embed = discord.Embed(
-                title="🔥 RANKING DE RACHAS - Local",
-                description=f"Servidor: {interaction.guild.name}\n*(Rachas son globales entre todos los servidores)*",
+                title=t('leaderboard.title.local_streaks', gid),
+                description=t('leaderboard.desc.local_streaks', gid, server=interaction.guild.name),
                 color=discord.Color.orange(),
                 timestamp=datetime.now()
             )
@@ -1589,8 +1779,9 @@ class PoleCog(commands.Cog):
                     None
                 )
                 if user_position:
-                    footer_text = f"Tu posición: #{user_position} • Tu racha: {global_user.get('current_streak', 0)} días"
-                    embed.set_footer(text=footer_text)
+                    embed.set_footer(text=t('leaderboard.footer.streak_position', gid, 
+                                            pos=user_position, 
+                                            streak=global_user.get('current_streak', 0)))
         
         # GLOBAL + RACHAS
         elif alcance == "global" and tipo == "rachas":
@@ -1599,13 +1790,13 @@ class PoleCog(commands.Cog):
             
             if not top_users:
                 await interaction.followup.send(
-                    "❌ Aún no hay estadísticas globales.",
+                    t('leaderboard.no_data_streaks_global', interaction.guild.id if interaction.guild else None),
                     ephemeral=True
                 )
                 return
             
             embed = discord.Embed(
-                title="🔥 RANKING DE RACHAS - Global",
+                title=t('leaderboard.title.global_streaks', interaction.guild.id if interaction.guild else None),
                 color=discord.Color.orange(),
                 timestamp=datetime.now()
             )
@@ -1652,13 +1843,14 @@ class PoleCog(commands.Cog):
             
             if not top_users:
                 await interaction.followup.send(
-                    f"❌ Aún no hay estadísticas globales{'de esta temporada' if not is_lifetime else ''}.",
+                    t('leaderboard.no_data_global', interaction.guild.id if interaction.guild else None,
+                      season_info=' de esta temporada' if not is_lifetime else ''),
                     ephemeral=True
                 )
                 return
             
             embed = discord.Embed(
-                title=f"🌍 RANKING GLOBAL - Personas - {title_suffix}",
+                title=t('leaderboard.title.global_people', interaction.guild.id if interaction.guild else None, season=title_suffix),
                 color=discord.Color.gold(),
                 timestamp=datetime.now()
             )
@@ -1667,7 +1859,7 @@ class PoleCog(commands.Cog):
             for idx, user_data in enumerate(top_users, start=1):
                 points = user_data.get(points_key, 0)
                 poles = user_data.get(poles_key, 0)
-                rank_emoji, _ = get_rank_info(points)
+                rank_emoji, _ = get_rank_info(points, interaction.guild.id if interaction.guild else None)
                 position_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(idx, f"{idx}.")
                 
                 # Racha solo para lifetime
@@ -1710,7 +1902,8 @@ class PoleCog(commands.Cog):
             
             if not top_servers:
                 await interaction.followup.send(
-                    f"❌ Aún no hay servidores representados{'en esta temporada' if not is_lifetime else ''}.",
+                    t('leaderboard.no_data_servers_global', interaction.guild.id if interaction.guild else None,
+                      season_info=' en esta temporada' if not is_lifetime else ''),
                     ephemeral=True
                 )
                 return
@@ -1737,21 +1930,21 @@ class PoleCog(commands.Cog):
         
         await interaction.followup.send(embed=embed)
     
-    @app_commands.command(name="streak", description="Ver información detallada de tu racha")
+    @app_commands.command(name="streak", description=_T('cmd.streak.desc'))
     async def streak(self, interaction: discord.Interaction):
         """Ver información de racha del usuario"""
         # Defer para evitar timeout
         await interaction.response.defer()
         
         if interaction.guild is None:
-            await interaction.followup.send("❌ Este comando solo funciona en servidores.", ephemeral=True)
+            await interaction.followup.send(t('errors.command_server_only', None), ephemeral=True)
             return
         gid = interaction.guild.id
         user_data = self.db.get_user(interaction.user.id, gid)
         
         if not user_data or user_data['total_poles'] == 0:
             await interaction.followup.send(
-                "❌ Aún no has hecho ningún pole.",
+                t('streak.no_poles', gid),
                 ephemeral=True
             )
             return
@@ -1772,8 +1965,8 @@ class PoleCog(commands.Cog):
             current_streak_emoji = FIRE if user_data['current_streak'] > 1 else GRAY_FIRE
             
             embed.add_field(
-                name=f"{current_streak_emoji} Racha Actual",
-                value=f"**{user_data['current_streak']}** días consecutivos\nMultiplicador: **x{multiplier:.1f}**",
+                name=t('profile.streak.current_title', gid, emoji=current_streak_emoji),
+                value=t('profile.streak.current_value', gid, days=user_data['current_streak'], multiplier=multiplier),
                 inline=False
             )
             
@@ -1785,21 +1978,21 @@ class PoleCog(commands.Cog):
                 days_to_next = next_milestone - user_data['current_streak']
                 next_multiplier = get_streak_multiplier(next_milestone)
                 embed.add_field(
-                    name="🎯 Próximo Hito",
-                    value=f"{next_milestone} días (faltan **{days_to_next}** días)\nMultiplicador: x{next_multiplier:.1f}",
+                    name=t('streak.next_milestone', gid),
+                    value=t('streak.next_milestone_value', gid, milestone=next_milestone, days=days_to_next, multiplier=next_multiplier),
                     inline=False
                 )
         else:
             embed.add_field(
-                name=f"{GRAY_FIRE} Racha apagada",
-                value="Racha de 0 días. Enciéndela con un pole hoy.",
+                name=t('streak.off', gid),
+                value=t('streak.off_desc', gid),
                 inline=False
             )
         
         # Mejor racha
         embed.add_field(
-            name="🏆 Tu Mejor Racha",
-            value=f"**{user_data['best_streak']}** días",
+            name=t('streak.best', gid),
+            value=t('streak.best_value', gid, streak=user_data['best_streak']),
             inline=True
         )
         
@@ -1810,96 +2003,68 @@ class PoleCog(commands.Cog):
             days_since = (today - last_date).days
             
             if days_since == 0:
-                last_text = "Hoy ✅"
+                last_text = t('streak.last_pole_today', gid)
             elif days_since == 1:
-                last_text = "Ayer"
+                last_text = t('streak.last_pole_yesterday', gid)
             else:
-                last_text = f"Hace {days_since} días"
+                last_text = t('streak.last_pole_days_ago', gid, days=days_since)
             
             embed.add_field(
-                name="📅 Último Pole",
+                name=t('streak.last_pole', gid),
                 value=last_text,
                 inline=True
             )
         
         await interaction.followup.send(embed=embed)
     
-    @app_commands.command(name="polehelp", description="Ver información sobre cómo funciona el bot")
+    @app_commands.command(name="polehelp", description=_T('cmd.polehelp.desc'))
     async def polehelp(self, interaction: discord.Interaction):
         """Mostrar ayuda del bot"""
+        gid = interaction.guild.id if interaction.guild else None
         embed = discord.Embed(
-            title="📖 Pole Bot - Guía Rápida",
-            description="Compite cada día por escribir **pole** lo más rápido posible tras la apertura diaria",
+            title=t('help.title', gid),
+            description=t('help.description', gid),
             color=discord.Color.blue(),
             timestamp=datetime.now()
         )
         
         # Cómo jugar
         embed.add_field(
-            name="🎮 Cómo Jugar",
-            value=(
-                "1. Espera la **notificación de apertura** (hora aleatoria cada día)\n"
-                "2. Escribe exactamente **`pole`** en el canal configurado\n"
-                "3. ¡Gana puntos según tu velocidad!\n"
-                "⚠️ Solo 1 pole al día, en cualquier servidor"
-            ),
+            name=t('help.how_to_play', gid),
+            value=t('help.how_to_play_desc', gid),
             inline=False
         )
         
         # Tipos de pole según delay
         embed.add_field(
-            name="🏆 Categorías de Pole",
-            value=(
-                "💎 **Crítica** (0-10 min): 20 pts\n"
-                "    └ Solo 10% del servidor puede reclamarla\n"
-                "⚡ **Veloz** (10 min - 3h): 15 pts\n"
-                "    └ Solo 30% del servidor puede reclamarla\n"
-                "🏁 **Normal** (3h - 00:00): 10 pts\n"
-                "    └ Sin límite de usuarios\n"
-                "🐷 **Marranero** (día siguiente): 5 pts\n"
-                "    └ Sin límite de usuarios"
-            ),
+            name=t('help.categories', gid),
+            value=t('help.categories_desc', gid),
             inline=False
         )
         
         # Rachas
         embed.add_field(
-            name=f"{FIRE} Sistema de Rachas",
-            value=(
-                "Haz pole días consecutivos para aumentar tu multiplicador\n"
-                "• 7 días: x1.1\n"
-                "• 30 días: x1.4\n"
-                "• 90 días: x1.8\n"
-                "• 300 días: x2.5 (máximo)"
-            ),
+            name=t('help.streaks', gid),
+            value=t('help.streaks_desc', gid),
             inline=False
         )
         
         # Comandos
         embed.add_field(
-            name="⚙️ Comandos",
-            value=(
-                "`/profile` - Ver tu perfil y estadísticas\n"
-                "`/leaderboard` - Ver rankings (local/global, personas/servidores)\n"
-                "`/streak` - Info detallada de tu racha\n"
-                "`/season` - Ver temporada actual y tu progreso\n"
-                "`/history` - Ver badges y temporadas pasadas\n"
-                "`/leaderboard` - También permite ver temporadas específicas (selector de temporada)\n"
-                "`/settings` - Configurar el bot (admins)\n"
-                "`/polehelp` - Ver esta ayuda"
-            ),
+            name=t('help.commands', gid),
+            value=t('help.commands_desc', gid),
             inline=False
         )
         
-        embed.set_footer(text=f"¡Suerte y que gane el más rápido! {FIRE}")
+        embed.set_footer(text=t('help.footer', gid))
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="season", description="Ver información de la temporada actual y tu progreso")
+    @app_commands.command(name="season", description=_T('cmd.season.desc'))
     async def season(self, interaction: discord.Interaction):
         """Ver información de la temporada actual"""
         if not interaction.guild:
-            await interaction.response.send_message("❌ Este comando solo funciona en servidores.", ephemeral=True)
+            await interaction.response.send_message(t('errors.command_server_only', None), ephemeral=True)
             return
         
         from utils.scoring import get_current_season, get_season_info
@@ -1911,16 +2076,17 @@ class PoleCog(commands.Cog):
         season_stats = self.db.get_season_stats(interaction.user.id, interaction.guild.id, current_season_id)
         
         # Crear embed
+        gid = interaction.guild.id
         embed = discord.Embed(
             title=f"🎮 {season_info['name']}",
-            description=f"**Período:** {season_info['start_date']} → {season_info['end_date']}",
+            description=t('season.period', gid, start=season_info['start_date'], end=season_info['end_date']),
             color=discord.Color.gold() if season_info['is_ranked'] else discord.Color.blue(),
             timestamp=datetime.now()
         )
         
         # Estado de la temporada
-        status = "🏆 **Temporada Oficial**" if season_info['is_ranked'] else "🎯 **Temporada de Práctica**"
-        embed.add_field(name="Estado", value=status, inline=False)
+        status = t('season.official', gid) if season_info['is_ranked'] else t('season.practice', gid)
+        embed.add_field(name=t('season.status', gid), value=status, inline=False)
         
         # Calcular tiempo restante
         try:
@@ -1930,14 +2096,14 @@ class PoleCog(commands.Cog):
             
             if days_left > 0:
                 embed.add_field(
-                    name="⏰ Tiempo Restante",
-                    value=f"**{days_left}** días",
+                    name=t('season.time_remaining', gid),
+                    value=t('season.days_left', gid, days=days_left),
                     inline=True
                 )
             else:
                 embed.add_field(
-                    name="⏰ Estado",
-                    value="**Finalizada**",
+                    name=t('season.status', gid),
+                    value=t('season.finished', gid),
                     inline=True
                 )
         except:
@@ -1945,42 +2111,43 @@ class PoleCog(commands.Cog):
         
         # Stats del usuario en esta temporada
         if season_stats and season_stats.get('season_poles', 0) > 0:
-            rank_emoji, rank_name = get_rank_info(season_stats['season_points'])
+            rank_emoji, rank_name = get_rank_info(season_stats['season_points'], gid)
             
             embed.add_field(
-                name=f"\n📊 Tu Progreso en {season_info['name']}",
-                value=(
-                    f"🎖️ **Rango:** {rank_emoji} {rank_name}\n"
-                    f"💰 **Puntos:** {season_stats['season_points']:.1f}\n"
-                    f"🏁 **Poles:** {season_stats['season_poles']}\n"
-                    f"{FIRE} **Mejor Racha:** {season_stats['season_best_streak']} días"
-                ),
+                name=t('season.your_progress', gid, season=season_info['name']),
+                value=t('season.your_progress_desc', gid,
+                        emoji=rank_emoji, name=rank_name,
+                        points=f"{season_stats['season_points']:.1f}",
+                        poles=season_stats['season_poles'],
+                        streak=season_stats['season_best_streak']),
                 inline=False
             )
             
             # Desglose por tipo
-            breakdown = (
-                f"💎 Críticas: {season_stats['season_critical']} | "
-                f"⚡ Veloces: {season_stats['season_fast']}\n"
-                f"🏁 Normales: {season_stats['season_normal']} | "
-                f"🐷 Marraneros: {season_stats['season_marranero']}"
+            embed.add_field(
+                name=t('season.breakdown', gid),
+                value=t('season.breakdown_desc', gid,
+                        critical=season_stats['season_critical'],
+                        fast=season_stats['season_fast'],
+                        normal=season_stats['season_normal'],
+                        marranero=season_stats['season_marranero']),
+                inline=False
             )
-            embed.add_field(name="📈 Desglose", value=breakdown, inline=False)
         else:
             embed.add_field(
-                name="📊 Tu Progreso",
-                value=f"Aún no has hecho ningún pole en {season_info['name']}.\n¡Empieza ahora y escala el ranking!",
+                name=t('season.your_progress', gid, season=""),
+                value=t('season.no_poles', gid, season=season_info['name']),
                 inline=False
             )
         
-        embed.set_footer(text=f"Usa /history para ver temporadas pasadas {FIRE}")
+        embed.set_footer(text=t('season.footer', gid))
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="history", description="Ver tu historial de temporadas y colección de badges")
+    @app_commands.command(name="history", description=_T('cmd.mystats.desc'))
     async def history(self, interaction: discord.Interaction):
         """Ver historial de temporadas pasadas"""
         if not interaction.guild:
-            await interaction.response.send_message("❌ Este comando solo funciona en servidores.", ephemeral=True)
+            await interaction.response.send_message(t('errors.command_server_only', None), ephemeral=True)
             return
         
         # Obtener badges del usuario
@@ -2000,9 +2167,10 @@ class PoleCog(commands.Cog):
             ''', (interaction.user.id, interaction.guild.id))
             history = cursor.fetchall()
         
+        gid = interaction.guild.id
         embed = discord.Embed(
-            title=f"🏆 Historial de {interaction.user.display_name}",
-            description="Tu legado a través de las temporadas",
+            title=t('mystats.title', gid, user=interaction.user.display_name),
+            description=t('mystats.description', gid),
             color=discord.Color.purple(),
             timestamp=datetime.now()
         )
@@ -2018,14 +2186,14 @@ class PoleCog(commands.Cog):
                 badge_text += f"{badge['badge_emoji']} **{season_info['name']}** - {badge['badge_type'].title()}\n"
             
             embed.add_field(
-                name="💎 Colección de Badges",
-                value=badge_text or "No has ganado badges aún",
+                name=t('mystats.badges', gid),
+                value=badge_text or t('mystats.no_badges', gid),
                 inline=False
             )
         else:
             embed.add_field(
-                name="💎 Colección de Badges",
-                value="Aún no has ganado ningún badge.\n¡Completa una temporada para ganar tu primer badge!",
+                name=t('mystats.badges', gid),
+                value=t('mystats.no_badges', gid),
                 inline=False
             )
         
@@ -2044,18 +2212,18 @@ class PoleCog(commands.Cog):
                 )
             
             embed.add_field(
-                name="📜 Historial de Temporadas",
+                name=t('mystats.seasons', gid),
                 value=history_text,
                 inline=False
             )
         else:
             embed.add_field(
-                name="📜 Historial de Temporadas",
-                value="No has completado ninguna temporada aún.\n¡Sigue jugando para crear tu historial!",
+                name=t('mystats.seasons', gid),
+                value=t('mystats.no_seasons', gid),
                 inline=False
             )
         
-        embed.set_footer(text=f"Usa /season para ver la temporada actual {FIRE}")
+        embed.set_footer(text=t('season.footer', gid))
         await interaction.response.send_message(embed=embed)
     
     # [DEPRECATED] season_leaderboard eliminado. Usar /leaderboard con 'temporada'.
@@ -2254,28 +2422,15 @@ class PoleCog(commands.Cog):
                 # ==================== MENSAJE 1: INTRODUCCIÓN ====================
                 if is_first_season:
                     embed_intro = discord.Embed(
-                        title="🎆 ¡FELIZ AÑO NUEVO, EARLY POLERS! 🎆",
-                        description=(
-                            "Qué locura de año, familia.\n\n"
-                            "Ustedes son los **PIONEROS**. Los que creyeron en este bot cuando era un "
-                            "experimento random. Los que se comieron los bugs, las rachas rotas, las horas "
-                            "locas del pole... y **AÚN ASÍ** siguieron aquí.\n\n"
-                            "Este ha sido solo el **CALENTAMIENTO**. La pre-temporada. El tutorial.\n\n"
-                            f"Ahora viene el **POLE REWIND {old_season_id}**. Vamos a recordar quiénes fueron las leyendas. 🎬"
-                        ),
+                        title=t('rewind.intro_first_title', guild.id),
+                        description=t('rewind.intro_first_desc', guild.id, season=old_season_id),
                         color=discord.Color.gold(),
                         timestamp=datetime.now()
                     )
                 else:
                     embed_intro = discord.Embed(
-                        title="🎆 ¡FELIZ AÑO NUEVO, POLERS! 🎆",
-                        description=(
-                            "Otro año más, otra batalla ganada.\n\n"
-                            "Gracias a todos los que hicieron del pole parte de su rutina diaria. "
-                            "Cada pole a las 3am, cada racha salvada in extremis, cada momento épico... "
-                            "**ESO** es lo que hace que esta comunidad sea lo que es.\n\n"
-                            f"Es hora del **POLE REWIND {old_season_id}**. 🎬"
-                        ),
+                        title=t('rewind.intro_title', guild.id),
+                        description=t('rewind.intro_desc', guild.id, season=old_season_id),
                         color=discord.Color.gold(),
                         timestamp=datetime.now()
                     )
@@ -2290,8 +2445,8 @@ class PoleCog(commands.Cog):
                 
                 # ==================== MENSAJE 2: 👑 MÁXIMOS ANOTADORES (Local) ====================
                 embed_points_local = discord.Embed(
-                    title=f"👑 MÁXIMOS ANOTADORES - {guild.name}",
-                    description="Los que acumularon más puntos en esta temporada:",
+                    title=t('rewind.local_points_title', guild.id, server=guild.name),
+                    description=t('rewind.local_points_desc', guild.id),
                     color=discord.Color.gold(),
                     timestamp=datetime.now()
                 )
@@ -2299,24 +2454,24 @@ class PoleCog(commands.Cog):
                 if local_rankings['points']:
                     for i, (uid, pts) in enumerate(local_rankings['points'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
-                        dedication = self._get_dedication_points(i)
+                        dedication = self._get_dedication_points(i, guild.id)
                         embed_points_local.add_field(
                             name=f"{medal} {dedication}",
-                            value=f"<@{uid}> - **{pts:,}** puntos",
+                            value=t('rewind.points_value', guild.id, uid=uid, points=pts),
                             inline=False
                         )
                 else:
                     if embed_points_local.description:
-                        embed_points_local.description += "\n\n_Nadie compitió en esta categoría._"
+                        embed_points_local.description += "\n\n" + t('rewind.no_data', guild.id)
                 
-                embed_points_local.set_footer(text=f"Hall of Fame {old_season_id} • La consistencia paga.")
+                embed_points_local.set_footer(text=t('rewind.footer_hof', guild.id, season=old_season_id, tagline=t('rewind.tagline.points', guild.id)))
                 await channel.send(embed=embed_points_local)
                 await asyncio.sleep(1.5)
                 
                 # ==================== MENSAJE 3: ⚡ MÁS POLES (Local) ====================
                 embed_poles_local = discord.Embed(
-                    title=f"⚡ POLEMANIÁTICOS - {guild.name}",
-                    description="Los que más veces fueron los primeros:",
+                    title=t('rewind.local_poles_title', guild.id, server=guild.name),
+                    description=t('rewind.local_poles_desc', guild.id),
                     color=discord.Color.red(),
                     timestamp=datetime.now()
                 )
@@ -2324,24 +2479,24 @@ class PoleCog(commands.Cog):
                 if local_rankings['poles']:
                     for i, (uid, count) in enumerate(local_rankings['poles'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
-                        dedication = self._get_dedication_poles(i)
+                        dedication = self._get_dedication_poles(i, guild.id)
                         embed_poles_local.add_field(
                             name=f"{medal} {dedication}",
-                            value=f"<@{uid}> - **{count}** poles",
+                            value=t('rewind.poles_value', guild.id, uid=uid, count=count),
                             inline=False
                         )
                 else:
                     if embed_poles_local.description:
-                        embed_poles_local.description += "\n\n_Nadie compitió en esta categoría._"
+                        embed_poles_local.description += "\n\n" + t('rewind.no_data', guild.id)
                 
-                embed_poles_local.set_footer(text=f"Hall of Fame {old_season_id} • Siempre ahí.")
+                embed_poles_local.set_footer(text=t('rewind.footer_hof', guild.id, season=old_season_id, tagline=t('rewind.tagline.poles', guild.id)))
                 await channel.send(embed=embed_poles_local)
                 await asyncio.sleep(1.5)
                 
                 # ==================== MENSAJE 4: 🔥 MEJOR RACHA (Local) ====================
                 embed_streak_local = discord.Embed(
-                    title=f"{FIRE} DISCIPLINA MÁXIMA - {guild.name}",
-                    description="Los que mantuvieron las rachas más largas:",
+                    title=t('rewind.local_streaks_title', guild.id, server=guild.name),
+                    description=t('rewind.local_streaks_desc', guild.id),
                     color=discord.Color.orange(),
                     timestamp=datetime.now()
                 )
@@ -2349,24 +2504,24 @@ class PoleCog(commands.Cog):
                 if local_rankings['streaks']:
                     for i, (uid, streak) in enumerate(local_rankings['streaks'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
-                        dedication = self._get_dedication_streak(i)
+                        dedication = self._get_dedication_streak(i, guild.id)
                         embed_streak_local.add_field(
                             name=f"{medal} {dedication}",
-                            value=f"<@{uid}> - **{streak}** días consecutivos",
+                            value=t('rewind.streak_value', guild.id, uid=uid, streak=streak),
                             inline=False
                         )
                 else:
                     if embed_streak_local.description:
-                        embed_streak_local.description += "\n\n_Nadie compitió en esta categoría._"
+                        embed_streak_local.description += "\n\n" + t('rewind.no_data', guild.id)
                 
-                embed_streak_local.set_footer(text=f"Hall of Fame {old_season_id} • La disciplina es poder.")
+                embed_streak_local.set_footer(text=t('rewind.footer_hof', guild.id, season=old_season_id, tagline=t('rewind.tagline.streaks', guild.id)))
                 await channel.send(embed=embed_streak_local)
                 await asyncio.sleep(1.5)
                 
                 # ==================== MENSAJE 5: ⚡ VELOCISTAS (Local) ====================
                 embed_speed_local = discord.Embed(
-                    title=f"⚡ VELOCISTAS - {guild.name}",
-                    description="Los más rápidos en promedio (mínimo 10 poles):",
+                    title=t('rewind.local_speed_title', guild.id, server=guild.name),
+                    description=t('rewind.local_speed_desc', guild.id),
                     color=discord.Color.blue(),
                     timestamp=datetime.now()
                 )
@@ -2374,31 +2529,31 @@ class PoleCog(commands.Cog):
                 if local_rankings['speed']:
                     for i, (uid, delay) in enumerate(local_rankings['speed'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
-                        dedication = self._get_dedication_speed(i)
+                        dedication = self._get_dedication_speed(i, guild.id)
                         embed_speed_local.add_field(
                             name=f"{medal} {dedication}",
-                            value=f"<@{uid}> - **{delay:.1f}** min promedio",
+                            value=t('rewind.speed_value', guild.id, uid=uid, delay=delay),
                             inline=False
                         )
                 else:
                     if embed_speed_local.description:
-                        embed_speed_local.description += "\n\n_No hay suficientes datos._"
+                        embed_speed_local.description += "\n\n" + t('rewind.no_data_speed', guild.id)
                 
-                embed_speed_local.set_footer(text=f"Hall of Fame {old_season_id} • Reflejos de campeón.")
+                embed_speed_local.set_footer(text=t('rewind.footer_hof', guild.id, season=old_season_id, tagline=t('rewind.tagline.speed', guild.id)))
                 await channel.send(embed=embed_speed_local)
                 await asyncio.sleep(2)
                 
                 # ==================== MENSAJE 6: 🌍 HALL OF FAME GLOBAL (CONDENSADO) ====================
                 embed_global = discord.Embed(
-                    title="🌍 HALL OF FAME GLOBAL",
-                    description=f"Las leyendas que dominaron **TODOS** los servidores en {old_season_id}:",
+                    title=t('rewind.global_title', guild.id),
+                    description=t('rewind.global_desc', guild.id, season=old_season_id),
                     color=discord.Color.purple(),
                     timestamp=datetime.now()
                 )
                 
                 # Puntos
                 if global_rankings['points']:
-                    points_text = "**👑 Máximos Anotadores**\n"
+                    points_text = t('rewind.global_points', guild.id) + "\n"
                     for i, (uid, pts) in enumerate(global_rankings['points'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
                         points_text += f"{medal} <@{uid}> - **{pts:,}** pts\n"
@@ -2406,7 +2561,7 @@ class PoleCog(commands.Cog):
                 
                 # Poles
                 if global_rankings['poles']:
-                    poles_text = "**⚡ Polemaniáticos**\n"
+                    poles_text = t('rewind.global_poles', guild.id) + "\n"
                     for i, (uid, count) in enumerate(global_rankings['poles'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
                         poles_text += f"{medal} <@{uid}> - **{count}** poles\n"
@@ -2414,7 +2569,7 @@ class PoleCog(commands.Cog):
                 
                 # Rachas
                 if global_rankings['streaks']:
-                    streak_text = f"**{FIRE} Disciplina Máxima**\n"
+                    streak_text = t('rewind.global_streaks', guild.id) + "\n"
                     for i, (uid, streak) in enumerate(global_rankings['streaks'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
                         streak_text += f"{medal} <@{uid}> - **{streak}** días\n"
@@ -2422,7 +2577,7 @@ class PoleCog(commands.Cog):
                 
                 # Velocidad
                 if global_rankings['speed']:
-                    speed_text = "**⚡ Velocistas** (min 10 poles)\n"
+                    speed_text = t('rewind.global_speed', guild.id) + "\n"
                     for i, (uid, delay) in enumerate(global_rankings['speed'][:3], 1):
                         medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
                         speed_text += f"{medal} <@{uid}> - **{delay:.1f}** min\n"
@@ -2431,51 +2586,35 @@ class PoleCog(commands.Cog):
                 if not any([global_rankings['points'], global_rankings['poles'], 
                            global_rankings['streaks'], global_rankings['speed']]):
                     if embed_global.description:
-                        embed_global.description += "\n\n_Sin datos globales para esta temporada._"
+                        embed_global.description += "\n\n" + t('rewind.no_data_global', guild.id)
                 
-                embed_global.set_footer(text="Leyendas del Pole Bot • Nivel Dios")
+                embed_global.set_footer(text=t('rewind.footer_global', guild.id))
                 await channel.send(embed=embed_global)
                 await asyncio.sleep(2)
                 
                 # ==================== MENSAJE 7: NUEVA TEMPORADA ====================
                 if is_first_season:
                     embed_new_season = discord.Embed(
-                        title=f"🚀 BIENVENIDOS A LA {new_info['name'].upper()}",
-                        description=(
-                            "Se acabó la beta. Ahora va **EN SERIO**.\n\n"
-                            f"Esta es la **TEMPORADA 1** oficial del Pole Bot. "
-                            "Todo lo anterior fue práctica.\n\n"
-                            "♻️ Puntos a 0. Rachas a 0.\n"
-                            "💎 Tus badges BETA se quedan contigo.\n\n"
-                            "Todos empezamos igual. Que gane el que más lo quiera.\n\n"
-                            "La competencia oficial empieza... **AHORA**. 🏁"
-                        ),
+                        title=t('rewind.new_season_first_title', guild.id, season=new_info['name'].upper()),
+                        description=t('rewind.new_season_first_desc', guild.id),
                         color=discord.Color.green(),
                         timestamp=datetime.now()
                     )
                 else:
                     embed_new_season = discord.Embed(
-                        title=f"🚀 BIENVENIDOS A LA {new_info['name'].upper()}",
-                        description=(
-                            f"Se acabó mirar atrás. Desde hoy, borrón y cuenta nueva:\n\n"
-                            "♻️ Puntos reseteados a 0\n"
-                            "♻️ Rachas reseteadas a 0\n"
-                            "💎 Tus badges se quedan contigo (honor)\n\n"
-                            f"La {new_info['name']} arranca **YA**. Todos empezamos desde cero, "
-                            "con las mismas posibilidades.\n\n"
-                            "Que gane el mejor. 🏁"
-                        ),
+                        title=t('rewind.new_season_title', guild.id, season=new_info['name'].upper()),
+                        description=t('rewind.new_season_desc', guild.id, season=new_info['name']),
                         color=discord.Color.green(),
                         timestamp=datetime.now()
                     )
                 
                 embed_new_season.add_field(
-                    name="📅 Duración de Temporada",
-                    value=f"Desde **{new_info['start_date']}** hasta **{new_info['end_date']}**",
+                    name=t('rewind.new_season_duration', guild.id),
+                    value=t('rewind.new_season_duration_value', guild.id, start=new_info['start_date'], end=new_info['end_date']),
                     inline=False
                 )
                 
-                embed_new_season.set_footer(text=f"¡Que comience la competencia! {FIRE}")
+                embed_new_season.set_footer(text=t('rewind.new_season_footer', guild.id))
                 await channel.send(embed=embed_new_season)
                 
                 sent_count += 1
@@ -2489,77 +2628,37 @@ class PoleCog(commands.Cog):
         print(f"🎬 POLE REWIND enviado a {sent_count} servidores")
     
     # ==================== DEDICATORIAS POLE REWIND ====================
-    def _get_dedication_points(self, position: int) -> str:
+    def _get_dedication_points(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Puntos (local)"""
-        if position == 1:
-            return "El Rey de la Consistencia"
-        elif position == 2:
-            return "Segundo pero Letal"
-        else:
-            return "Bronce con Honor"
+        return t(f'dedication.points.{position}', guild_id)
     
-    def _get_dedication_poles(self, position: int) -> str:
+    def _get_dedication_poles(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Poles (local)"""
-        if position == 1:
-            return "El Polemaniático Supremo"
-        elif position == 2:
-            return "Siempre Segundo, Nunca Olvidado"
-        else:
-            return "Competencia de Élite"
+        return t(f'dedication.poles.{position}', guild_id)
     
-    def _get_dedication_streak(self, position: int) -> str:
+    def _get_dedication_streak(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Rachas (local)"""
-        if position == 1:
-            return "La Disciplina Hecha Persona"
-        elif position == 2:
-            return "Constancia de Acero"
-        else:
-            return "Disciplina Inquebrantable"
+        return t(f'dedication.streak.{position}', guild_id)
     
-    def _get_dedication_speed(self, position: int) -> str:
+    def _get_dedication_speed(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Velocidad (local)"""
-        if position == 1:
-            return "Reflejos de Rayo"
-        elif position == 2:
-            return "Velocidad Supersónica"
-        else:
-            return "Rápido como el Viento"
+        return t(f'dedication.speed.{position}', guild_id)
     
-    def _get_dedication_points_global(self, position: int) -> str:
+    def _get_dedication_points_global(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Puntos (global)"""
-        if position == 1:
-            return "El Titán de los Puntos"
-        elif position == 2:
-            return "Leyenda Viviente"
-        else:
-            return "Monstruo de Competición"
+        return t(f'dedication.points_global.{position}', guild_id)
     
-    def _get_dedication_poles_global(self, position: int) -> str:
+    def _get_dedication_poles_global(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Poles (global)"""
-        if position == 1:
-            return "Obsesión Nivel Dios"
-        elif position == 2:
-            return "Adicción Pura y Dura"
-        else:
-            return "Siempre en el Top"
+        return t(f'dedication.poles_global.{position}', guild_id)
     
-    def _get_dedication_streak_global(self, position: int) -> str:
+    def _get_dedication_streak_global(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Rachas (global)"""
-        if position == 1:
-            return "Constancia Sobrehumana"
-        elif position == 2:
-            return "Nunca Falta"
-        else:
-            return "Compromiso Total"
+        return t(f'dedication.streak_global.{position}', guild_id)
     
-    def _get_dedication_speed_global(self, position: int) -> str:
+    def _get_dedication_speed_global(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Velocidad (global)"""
-        if position == 1:
-            return "Velocidad de la Luz"
-        elif position == 2:
-            return "Flash Hecho Persona"
-        else:
-            return "Reflejos Inhumanos"
+        return t(f'dedication.speed_global.{position}', guild_id)
     
     def _get_season_rankings_local(self, guild_id: int, season_id: str) -> dict:
         """Obtener rankings completos de un servidor (filtro: min 500 pts + min 10 poles para velocidad)"""
@@ -2739,15 +2838,12 @@ class PoleCog(commands.Cog):
             content = "@everyone "
         
         embed = discord.Embed(
-            title="🔔 POLE ABIERTO",
-            description=(
-                "Llegó la hora: suelta ese **pole** y suma puntos 🏁\n"
-                "El primero manda, el resto acompaña."
-            ),
+            title=t('notification.pole_open', guild_id),
+            description=t('notification.pole_open_desc', guild_id),
             color=discord.Color.green(),
             timestamp=datetime.now()
         )
-        embed.set_footer(text="Que empiece la poleada ✨")
+        embed.set_footer(text=t('notification.pole_open_footer', guild_id))
         
         try:
             await channel.send(content=content if content else None, embed=embed)
@@ -2819,8 +2915,8 @@ class PoleCog(commands.Cog):
                 await channel.send(
                     content=None,
                     embed=discord.Embed(
-                        title="💔 Racha perdida",
-                        description=f"{names_text}\nLa racha se ha reiniciado por no completar ayer.",
+                        title=t('notification.streak_lost', guild_id),
+                        description=t('notification.streak_lost_desc', guild_id, names=names_text),
                         color=discord.Color.red(),
                         timestamp=datetime.now()
                     )
@@ -3121,8 +3217,8 @@ class PoleCog(commands.Cog):
         
         # Crear embed de resumen
         embed = discord.Embed(
-            title="🌃 Resumen del Día",
-            description=f"**{len(yesterday_poles)}** miembros completaron su pole ayer",
+            title=t('notification.daily_summary', guild_id),
+            description=t('notification.daily_summary_desc', guild_id, count=len(yesterday_poles)),
             color=discord.Color.dark_blue(),
             timestamp=datetime.now()
         )
@@ -3138,24 +3234,23 @@ class PoleCog(commands.Cog):
             
             if pole_list:
                 embed.add_field(
-                    name="✅ Completaron su pole ayer",
+                    name=t('summary.completed_yesterday', guild.id),
                     value=pole_list,
                     inline=False
                 )
         
         # Advertencia: racha en peligro (marranero disponible hasta la nueva apertura)
         if users_streak_at_risk:
-            streak_warning = (
-                f"⚠️ **{len(users_streak_at_risk)}** con la racha en el filo:\n\n"
-            )
+            streak_users = ""
             for user_info in users_streak_at_risk[:5]:
-                streak_warning += f"⏳ {user_info['member'].mention} (racha {user_info['streak']} días)\n"
+                streak_users += t('summary.user_streak', guild.id, mention=user_info['member'].mention, streak=user_info['streak']) + "\n"
             if len(users_streak_at_risk) > 5:
-                streak_warning += f"\n_...y {len(users_streak_at_risk) - 5} más_"
-            streak_warning += "\n\n🐷 Aún puedes hacer el **marranero** hasta la próxima apertura."
+                streak_users += "\n" + t('summary.and_more', guild.id, count=len(users_streak_at_risk) - 5)
+            
+            streak_warning = t('summary.streak_at_risk_desc', guild.id, count=len(users_streak_at_risk), users=streak_users)
 
             embed.add_field(
-                name=f"⏳ Racha en Peligro",
+                name=t('summary.streak_at_risk', guild.id),
                 value=streak_warning,
                 inline=False
             )
@@ -3164,24 +3259,24 @@ class PoleCog(commands.Cog):
         if users_pole_elsewhere:
             elsewhere_info = ""
             for user_info in users_pole_elsewhere[:10]:
-                elsewhere_info += f"🌍 {user_info['member'].mention} en **{user_info['other_guild']}** (racha {user_info['streak']} días)\n"
+                elsewhere_info += t('summary.user_elsewhere', guild.id, mention=user_info['member'].mention, guild=user_info['other_guild'], streak=user_info['streak']) + "\n"
             if len(users_pole_elsewhere) > 10:
-                elsewhere_info += f"\n_...y {len(users_pole_elsewhere) - 10} más_"
+                elsewhere_info += "\n" + t('summary.and_more', guild.id, count=len(users_pole_elsewhere) - 10)
 
             embed.add_field(
-                name=f"🌍 Polearon en Otro Servidor ({len(users_pole_elsewhere)})",
+                name=t('summary.pole_elsewhere', guild.id, count=len(users_pole_elsewhere)),
                 value=elsewhere_info,
                 inline=False
             )
         
         # Info del nuevo día
         embed.add_field(
-            name="🌅 Nuevo Día",
-            value="Arranca la jornada: espera el ping y entra a polear.",
+            name=t('summary.new_day', guild.id),
+            value=t('summary.new_day_desc', guild.id),
             inline=False
         )
         
-        embed.set_footer(text="Resumen automático • Sin pings")
+        embed.set_footer(text=t('summary.footer', guild.id))
         
         try:
             await channel.send(embed=embed)

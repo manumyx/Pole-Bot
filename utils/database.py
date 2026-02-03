@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 class Database:
     # Versión actual del schema - incrementar con cada migración
-    SCHEMA_VERSION = 5  # v1: inicial, v2: pole_date, v3: last_daily_pole_time, v4: impatient_attempts, v5: global_users
+    SCHEMA_VERSION = 6  # v1: inicial, v2: pole_date, v3: last_daily_pole_time, v4: impatient_attempts, v5: global_users, v6: i18n (language)
     
     def __init__(self, db_path: str = "data/pole_bot.db"):
         self.db_path = db_path
@@ -252,12 +252,24 @@ class Database:
             if current_version < 5:
                 print("🔄 Migración v5: Creando sistema de rachas globales...")
                 
+                # COMMIT pendientes y cerrar transacción actual
+                conn.commit()
+                
                 # DESACTIVAR foreign keys temporalmente para permitir DROP TABLE
+                # CRÍTICO: Debe hacerse FUERA de transacción para que surta efecto
+                conn.isolation_level = None  # Autocommit mode
                 cursor.execute('PRAGMA foreign_keys = OFF')
                 
+                # Verificar que se desactivaron
+                fk_status = cursor.execute('PRAGMA foreign_keys').fetchone()[0]
+                print(f"   🔧 Foreign keys: {'OFF' if fk_status == 0 else 'ON (⚠️ ADVERTENCIA)'}")
+                
                 # LIMPIAR RESIDUOS de intentos fallidos previos
+                # Esto es SEGURO porque estamos en autocommit
                 cursor.execute('DROP TABLE IF EXISTS users_new')
                 cursor.execute('DROP TABLE IF EXISTS global_users')
+                
+                print("   🧹 Limpieza de tablas temporales completada")
                 
                 # Crear tabla global_users
                 cursor.execute('''
@@ -369,11 +381,35 @@ class Database:
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_global_users_streak ON global_users(current_streak DESC)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_global_users_best ON global_users(best_streak DESC)')
                 
-                # REACTIVAR foreign keys
+                # REACTIVAR foreign keys y modo transaccional
                 cursor.execute('PRAGMA foreign_keys = ON')
+                conn.isolation_level = ''  # Volver a modo transaccional (default)
+                
+                # Verificar integridad
+                integrity = cursor.execute('PRAGMA foreign_key_check').fetchall()
+                if integrity:
+                    print(f"   ⚠️ Advertencia: {len(integrity)} violaciones de foreign key detectadas")
+                    for violation in integrity[:5]:  # Mostrar primeras 5
+                        print(f"      {violation}")
+                else:
+                    print("   ✅ Verificación de integridad: OK")
                 
                 self._set_schema_version(cursor, 5, f"Sistema de rachas globales creado. {migrated_count} usuarios migrados")
                 print(f"✅ Migración v5: {migrated_count} usuarios migrados a rachas globales")
+            
+            # ==================== MIGRACIÓN v6: Sistema i18n (idioma por servidor) ====================
+            if current_version < 6:
+                print("🔄 Ejecutando migración v6: Sistema de internacionalización (i18n)...")
+                
+                # Añadir columna language a servers
+                try:
+                    cursor.execute("ALTER TABLE servers ADD COLUMN language TEXT DEFAULT 'es'")
+                    print("   ✅ Columna 'language' añadida a tabla servers")
+                except sqlite3.OperationalError:
+                    print("   ⚠️ Columna 'language' ya existe, saltando...")
+                
+                self._set_schema_version(cursor, 6, "Sistema de internacionalización (i18n) implementado")
+                print("✅ Migración v6: Sistema i18n listo. Idiomas disponibles: es, en")
     
     def _auto_initialize_seasons(self):
         """
@@ -554,6 +590,23 @@ class Database:
                 UPDATE servers SET {fields}
                 WHERE guild_id = ?
             ''', values)
+    
+    def get_server_language(self, guild_id: int) -> str:
+        """Obtener idioma configurado del servidor (default: 'es')"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT language FROM servers WHERE guild_id = ?', (guild_id,))
+            row = cursor.fetchone()
+            return row['language'] if row and row['language'] else 'es'
+    
+    def set_server_language(self, guild_id: int, language: str):
+        """Configurar idioma del servidor"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE servers SET language = ?
+                WHERE guild_id = ?
+            ''', (language, guild_id))
     
     def set_daily_pole_time(self, guild_id: int, time_str: str):
         """Establecer hora de pole del día (formato HH:MM:SS)

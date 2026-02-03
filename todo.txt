@@ -4,6 +4,33 @@
 
 ## ✅ COMPLETADOS RECIENTEMENTE (Sesión actual)
 
+### 🌐 SISTEMA DE INTERNACIONALIZACIÓN (i18n) - COMPLETADO (1 febrero 2026)
+- [x] **Sistema multiidioma implementado**
+  - Creado módulo utils/i18n.py con diccionarios ES/EN
+  - Función t(key, guild_id, **kwargs) para traducciones dinámicas
+  - ~200+ strings principales traducidos (comandos, settings, pole messages, embeds)
+  - Soporte para variables con formateo: t('pole.critical', guild_id, minutes=5)
+  - Archivo: utils/i18n.py
+
+- [x] **Migración v6 de base de datos**
+  - Nueva columna language TEXT DEFAULT 'es' en tabla servers
+  - Métodos get_server_language() y set_server_language() en Database
+  - Migración automática al iniciar bot (v5 → v6)
+  - Archivo: utils/database.py (líneas ~380-390, ~570-590)
+
+- [x] **Selector de idioma en /settings**
+  - Nueva vista LanguageSelectView con botones 🇪🇸/🇬🇧
+  - Opción "Idioma" añadida al menú de settings (solo admins)
+  - Embed muestra idioma actual con emoji y nombre
+  - Cambio de idioma instantáneo y persistente
+  - Archivo: cogs/pole.py (líneas ~126-175)
+
+- [x] **Documentación completa**
+  - docs/I18N.md con guía de uso para usuarios y desarrolladores
+  - Ejemplos de cómo añadir traducciones
+  - Convenciones y buenas prácticas
+  - Estado: ✅ Listo para usar, pendiente migrar todos los strings
+
 ### 🐛 CASO REAL CONFIRMADO - takusito perdió racha de 27 días (29 enero 2026)
 **Evidencia de la BD de producción (pole_bot_prod29012026.db):**
 - takusito (ID: 572416955961835520) estaba en 2 servidores:

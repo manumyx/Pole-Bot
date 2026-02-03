@@ -9,7 +9,7 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 **Contexto cultural:** Pole empezó en forocoches como una manera de competir para ver quién era el más rápido en escribir "pole" como primer mensaje de un hilo o canal. He tomado la inspiración de ese juego para crear un bot que automatice y gestione esta competición en servidores de Discord, y de paso lo he hecho más complejo y competitivo.
 
 - **Puntuación:** Los puntos se otorgan según la rapidez: `Critical` (0-10 min), `Fast` (10 min-3h), `Normal` (3h-00:00) y `Marranero` (día siguiente).
-- **Características Clave:** 
+- **Características Clave:**
   - Rachas progresivas con multiplicadores (hasta x2.5)
   - Temporadas anuales con **POLE REWIND** 🎬
   - Rankings locales y globales
@@ -22,7 +22,8 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 **IMPORTANTE:** El Pole Bot tiene personalidad. No es un bot corporativo ni formal. Tiene CARISMA, VACILE y FLOW.
 
 ### **Tono de Mensajes:**
-- ✅ **Casual y divertido:** "Qué manera de cerrar el año, familia" 
+
+- ✅ **Casual y divertido:** "Qué manera de cerrar el año, familia"
 - ✅ **Con hype:** "Ahora viene lo bueno. 🔥"
 - ✅ **Directo y auténtico:** "Se acabó la beta. Ahora va EN SERIO."
 - ✅ **Competitivo pero sano:** "Que gane el mejor. 🏁"
@@ -32,6 +33,7 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 ### **Ejemplos de Mensajes con Esencia:**
 
 **Bueno:**
+
 ```
 "¡POLE CRÍTICO! ⚡ 2 minutos. Eres una máquina."
 "Pole marranero... Mejor tarde que nunca. 🐷"
@@ -39,12 +41,14 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 ```
 
 **Malo:**
+
 ```
 "Has conseguido un pole crítico. Bien hecho."
 "Tu racha es de 30 días. Continúa así."
 ```
 
 ### **Características de Personalidad:**
+
 - 🎯 **Competitivo:** Celebra victorias, vacila derrotas
 - 🔥 **Motivador:** Impulsa a mantener rachas y mejorar
 - 😎 **Cool:** No toma todo súper serio, sabe cuándo relajarse
@@ -60,6 +64,7 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 ## 4. Arquitectura y Estructura del Proyecto
 
 ### **`main.py` (Punto de Entrada):**
+
 - Define la clase `PoleBot(commands.Bot)`.
 - Configura los `Intents` de Discord (incluyendo `message_content` y `members`).
 - El `setup_hook` carga dinámicamente las extensiones (Cogs).
@@ -68,6 +73,7 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 ### **`cogs/` (Capa de Comandos y Lógica):**
 
 **`cogs/pole.py`** - El corazón del bot:
+
 - `on_message`: Detecta la palabra `pole`
 - `process_pole`: Validación, puntuación y guardado
 - Comandos: `/profile`, `/leaderboard`, `/settings`, `/history`
@@ -78,10 +84,12 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 - **POLE REWIND:** `_send_season_change_announcement()` - Sistema de celebración de Año Nuevo
 
 **`cogs/events.py`:**
+
 - Respuestas a menciones del bot
 - `on_guild_remove`: Limpieza automática al ser expulsado
 
 **`cogs/debug.py`** (solo si `DEBUG=1`):
+
 - `/debug test_migration`: Testear migraciones (dry run + real)
 - `/debug force_generate`: Generar hora manualmente
 - `/debug info`: Ver estado del servidor
@@ -90,6 +98,7 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 ### **`utils/` (Lógica de Negocio):**
 
 **`utils/database.py`** - **CRÍTICO:**
+
 - **ÚNICA clase que puede tocar la BD** `data/pole_bot.db`
 - Usa context managers con rollback automático
 - PRAGMA foreign_keys = ON siempre
@@ -97,26 +106,36 @@ El "Pole Bot" es un bot de Discord para una especie de juego competitivo. Cada d
 - **Regla de oro:** Nunca escribas SQL directamente en cogs, añade método aquí
 
 **`utils/scoring.py`:**
+
 - `calculate_points()`: Puntos según tipo + multiplicador de racha
 - `classify_delay()`: Critical/Fast/Normal/Marranero
 - `get_rank_info()`: Rangos según puntos (Rubí, Amatista, Diamante, Oro, Plata, Bronce)
 - `get_season_info()`: Config de temporadas (2025 = pre-temporada, 2026+ = oficiales)
 
+**`utils/i18n.py`:**
+
+- Sistema de traducción multi-idioma (es/en)
+- Todo el texto que se añada debe pasar por aquí para que todos los diálogos tengan traducción
+- Estrictamente NO hardcodear strings en ningún lado
+
 ## 5. Esquema de Base de Datos (Schema v3)
 
 **Tablas Core:**
+
 - `servers`: Config por servidor (canal, rol ping, notificaciones, hora diaria)
 - `users`: Stats acumuladas (rachas, contadores). **Puntos se calculan dinámicamente**
 - `poles`: Historial completo de cada pole individual
 - `schema_metadata`: Versión de schema + timestamp
 
 **Tablas de Temporadas:**
+
 - `seasons`: Define temporadas (ID, nombre, fechas, is_active)
 - `season_stats`: **Tabla clave para rankings** - Stats por usuario/temporada
 - `season_history`: Copia final al terminar temporada
 - `user_badges`: Badges permanentes ganados
 
 **Importante:**
+
 - Los puntos totales NO se guardan en `users`, se calculan desde `season_stats`
 - Foreign keys habilitadas siempre
 - Usa `get_connection()` context manager para transacciones
@@ -141,18 +160,22 @@ El fichero `todo.txt` es la **FUENTE ÚNICA DE VERDAD** para tareas, bugs y prog
 
 ```markdown
 ## 🚨 CRÍTICOS (hacer YA)
+
 - [ ] Tarea crítica con deadline
   - Detalles técnicos
   - Archivos afectados
-  
+
 ## 🔧 PENDIENTES (hacer cuando se pueda)
+
 - [ ] Mejora o feature nueva
-  
+
 ## 🔮 FUTURO (nice to have)
+
 - [ ] Ideas a largo plazo
 ```
 
 #### **Reglas:**
+
 - ✅ Marca `[x]` cuando completes algo
 - ✅ Añade sub-tareas con indentación (bullets)
 - ✅ Usa emojis para categorizar (🚨🔧🔮🐛✨)
@@ -166,6 +189,7 @@ Sí, literalmente escribimos TODO en el `todo.txt`. Es el sistema de gestión de
 ## 7. Convenciones de Codificación
 
 ### **Obligatorias:**
+
 - ✅ `app_commands` (comandos de barra) para toda funcionalidad nueva
 - ✅ Type hints en TODAS las funciones nuevas
 - ✅ Docstrings en español para funciones complejas
@@ -175,6 +199,7 @@ Sí, literalmente escribimos TODO en el `todo.txt`. Es el sistema de gestión de
 - ✅ Logging con emojis para mayor claridad (🔄✅❌⚠️)
 
 ### **Prohibidas:**
+
 - ❌ SQL directo en cogs (usar métodos de `Database`)
 - ❌ Comandos con prefijo `!` (solo app_commands `/`)
 - ❌ Código síncrono que bloquee el event loop
@@ -182,6 +207,7 @@ Sí, literalmente escribimos TODO en el `todo.txt`. Es el sistema de gestión de
 - ❌ Type hints con `any` (ser específico)
 
 ### **Estilo:**
+
 ```python
 # BUENO
 async def get_user_stats(self, user_id: int, guild_id: int) -> Dict[str, Any]:
@@ -240,10 +266,12 @@ El sistema detecta automáticamente si es la primera temporada real y ajusta los
 ### **Tres Capas de Notificaciones:**
 
 1. **Scheduler Principal:** `_schedule_single_notification()`
+
    - Programa notificación exacta con `asyncio.sleep()`
    - Una task por servidor
 
 2. **Watcher Failsafe:** `opening_notification_watcher`
+
    - Corre cada 1 minuto
    - Detecta notificaciones perdidas (ej: bot caído)
    - Envía si estamos dentro de ventana de 60 min
@@ -314,23 +342,27 @@ El sistema detecta automáticamente si es la primera temporada real y ajusta los
 ## 12. Principios de Desarrollo
 
 ### **KISS (Keep It Simple, Stupid):**
+
 - No sobre-ingenierizar
 - Soluciones directas sobre complejas
 - `todo.txt` > sistemas de tickets elaborados
 
 ### **Robustez:**
+
 - Context managers con rollback automático
 - Logging detallado con emojis
 - Failsafes para downtimes
 - Verificación de integridad post-migración
 
 ### **User Experience:**
+
 - Mensajes con personalidad y carisma
 - Feedback inmediato
 - Embeds visualmente atractivos
 - Emojis con propósito
 
 ### **Mantenibilidad:**
+
 - Código autodocumentado (nombres claros)
 - Type hints obligatorios
 - SQL centralizado en `Database`
