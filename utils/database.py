@@ -267,9 +267,21 @@ class Database:
                 # LIMPIAR RESIDUOS de intentos fallidos previos
                 # Esto es SEGURO porque estamos en autocommit
                 cursor.execute('DROP TABLE IF EXISTS users_new')
-                cursor.execute('DROP TABLE IF EXISTS global_users')
                 
-                print("   🧹 Limpieza de tablas temporales completada")
+                # Antes de eliminar global_users, crear un respaldo si existe
+                cursor.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type = 'table' AND name = 'global_users'
+                """)
+                if cursor.fetchone():
+                    # Crear tabla de respaldo solo si aún no existe
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS global_users_backup_v5 AS
+                        SELECT * FROM global_users
+                    ''')
+                    cursor.execute('DROP TABLE global_users')
+                
+                print("   🧹 Limpieza de tablas temporales completada (respaldo de global_users si existía)")
                 
                 # Crear tabla global_users
                 cursor.execute('''
