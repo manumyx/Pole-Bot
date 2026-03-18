@@ -4,16 +4,18 @@ Maneja toda la persistencia del Pole Bot
 """
 import sqlite3
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple, Any
 from contextlib import contextmanager
 
 class Database:
     # Versión actual del schema - incrementar con cada migración
-    SCHEMA_VERSION = 6  # v1: inicial, v2: pole_date, v3: last_daily_pole_time, v4: impatient_attempts, v5: global_users, v6: i18n (language)
+    SCHEMA_VERSION = 7  # v1: inicial, v2: pole_date, v3: last_daily_pole_time, v4: impatient_attempts, v5: global_users, v6: i18n (language), v7: notification_sent_at
     
     def __init__(self, db_path: str = "data/pole_bot.db"):
         self.db_path = db_path
+        self.log = logging.getLogger('Database')
         
         # Crear directorio si no existe
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -27,12 +29,12 @@ class Database:
         # Inicializar sistema de seasons (auto-setup en primer inicio)
         self._auto_initialize_seasons()
         
-        print(f"✅ Base de datos inicializada: {db_path}")
+        self.log.info(f"Base de datos lista: {db_path}")
     
     @contextmanager
     def get_connection(self):
-        """Context manager para conexiones a la base de datos"""
-        conn = sqlite3.connect(self.db_path)
+        """Context manager para conexiones a la base de datos con timeout"""
+        conn = sqlite3.connect(self.db_path, timeout=10.0)  # Timeout de 10 segundos
         conn.row_factory = sqlite3.Row  # Para acceder por nombre de columna
         # Habilitar foreign keys (SQLite las tiene desactivadas por defecto)
         conn.execute('PRAGMA foreign_keys = ON')
@@ -169,6 +171,8 @@ class Database:
             # NOTA: idx_users_streak eliminado - current_streak movido a global_users en v5
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_poles_user ON poles(user_id, guild_id)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_poles_date ON poles(created_at)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_poles_pole_date ON poles(pole_date)')  # Para user_has_pole_on_date
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_season_stats_lookup ON season_stats(user_id, guild_id, season_id)')  # Para get_season_stats
     
     def _get_schema_version(self) -> int:
         """Obtener la versión actual del schema de la base de datos"""
@@ -200,13 +204,13 @@ class Database:
         """Ejecutar migraciones pendientes de forma segura"""
         current_version = self._get_schema_version()
         
-        print(f"🔍 Schema actual: v{current_version}, Target: v{self.SCHEMA_VERSION}")
+        self.log.debug(f"Schema actual: v{current_version}, Target: v{self.SCHEMA_VERSION}")
         
         if current_version >= self.SCHEMA_VERSION:
-            print(f"✅ Base de datos ya está en v{self.SCHEMA_VERSION}")
+            self.log.debug(f"Base de datos ya está en v{self.SCHEMA_VERSION}")
             return  # Ya está actualizado
         
-        print(f"🔄 Ejecutando migraciones desde v{current_version} a v{self.SCHEMA_VERSION}...")
+        self.log.info(f"🔄 Ejecutando migraciones desde v{current_version} a v{self.SCHEMA_VERSION}...")
         
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -217,11 +221,11 @@ class Database:
                     cursor.execute('ALTER TABLE poles ADD COLUMN pole_date TEXT')
                     cursor.execute('UPDATE poles SET pole_date = DATE(user_time) WHERE pole_date IS NULL')
                     self._set_schema_version(cursor, 2, "Añadida columna pole_date a poles")
-                    print("✅ Migración v2: columna pole_date añadida")
+                    self.log.info("✅ Migración v2: columna pole_date añadida")
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
-                    print("ℹ️  Migración v2: columna pole_date ya existe")
+                    self.log.info("ℹ️  Migración v2: columna pole_date ya existe")
                     self._set_schema_version(cursor, 2, "Columna pole_date ya existía")
             
             # MIGRACIÓN v2 → v3: Añadir last_daily_pole_time
@@ -229,11 +233,11 @@ class Database:
                 try:
                     cursor.execute('ALTER TABLE servers ADD COLUMN last_daily_pole_time TIME')
                     self._set_schema_version(cursor, 3, "Añadida columna last_daily_pole_time a servers")
-                    print("✅ Migración v3: columna last_daily_pole_time añadida")
+                    self.log.info("✅ Migración v3: columna last_daily_pole_time añadida")
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
-                    print("ℹ️  Migración v3: columna last_daily_pole_time ya existe")
+                    self.log.info("ℹ️  Migración v3: columna last_daily_pole_time ya existe")
                     self._set_schema_version(cursor, 3, "Columna last_daily_pole_time ya existía")
             
             # MIGRACIÓN v3 → v4: Añadir impatient_attempts (stat secreta)
@@ -241,16 +245,16 @@ class Database:
                 try:
                     cursor.execute('ALTER TABLE users ADD COLUMN impatient_attempts INTEGER DEFAULT 0')
                     self._set_schema_version(cursor, 4, "Añadida columna impatient_attempts a users")
-                    print("✅ Migración v4: columna impatient_attempts añadida")
+                    self.log.info("✅ Migración v4: columna impatient_attempts añadida")
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
-                    print("ℹ️  Migración v4: columna impatient_attempts ya existe")
+                    self.log.info("ℹ️  Migración v4: columna impatient_attempts ya existe")
                     self._set_schema_version(cursor, 4, "Columna impatient_attempts ya existía")
             
             # MIGRACIÓN v4 → v5: Crear tabla global_users y migrar rachas
             if current_version < 5:
-                print("🔄 Migración v5: Creando sistema de rachas globales...")
+                self.log.info("Migración v5: Creando sistema de rachas globales...")
                 
                 # COMMIT pendientes y cerrar transacción actual
                 conn.commit()
@@ -262,7 +266,7 @@ class Database:
                 
                 # Verificar que se desactivaron
                 fk_status = cursor.execute('PRAGMA foreign_keys').fetchone()[0]
-                print(f"   🔧 Foreign keys: {'OFF' if fk_status == 0 else 'ON (⚠️ ADVERTENCIA)'}")
+                self.log.warning(f"   🔧 Foreign keys: {'OFF' if fk_status == 0 else 'ON (⚠️ ADVERTENCIA)'}")
                 
                 # LIMPIAR RESIDUOS de intentos fallidos previos
                 # Esto es SEGURO porque estamos en autocommit
@@ -281,7 +285,7 @@ class Database:
                     ''')
                     cursor.execute('DROP TABLE global_users')
                 
-                print("   🧹 Limpieza de tablas temporales completada (respaldo de global_users si existía)")
+                self.log.info("   🧹 Limpieza de tablas temporales completada (respaldo de global_users si existía)")
                 
                 # Crear tabla global_users
                 cursor.execute('''
@@ -304,7 +308,7 @@ class Database:
                 ''')
                 
                 # Migrar datos existentes: consolidar rachas de todos los servidores
-                print("   📊 Consolidando rachas de usuarios...")
+                self.log.info("   📊 Consolidando rachas de usuarios...")
                 
                 # Estrategia: Para cada usuario, tomar el MAX de rachas y el guild donde tiene mejor desempeño
                 cursor.execute('''
@@ -395,33 +399,47 @@ class Database:
                 
                 # REACTIVAR foreign keys y modo transaccional
                 cursor.execute('PRAGMA foreign_keys = ON')
-                conn.isolation_level = ''  # Volver a modo transaccional (default)
+                conn.isolation_level = None  # Volver a modo transaccional (default)
                 
                 # Verificar integridad
                 integrity = cursor.execute('PRAGMA foreign_key_check').fetchall()
                 if integrity:
-                    print(f"   ⚠️ Advertencia: {len(integrity)} violaciones de foreign key detectadas")
+                    self.log.warning(f"   ⚠️ Advertencia: {len(integrity)} violaciones de foreign key detectadas")
                     for violation in integrity[:5]:  # Mostrar primeras 5
-                        print(f"      {violation}")
+                        self.log.info(f"      {violation}")
                 else:
-                    print("   ✅ Verificación de integridad: OK")
+                    self.log.info("   ✅ Verificación de integridad: OK")
                 
                 self._set_schema_version(cursor, 5, f"Sistema de rachas globales creado. {migrated_count} usuarios migrados")
-                print(f"✅ Migración v5: {migrated_count} usuarios migrados a rachas globales")
+                self.log.info(f"Migración v5: {migrated_count} usuarios migrados a rachas globales")
             
             # ==================== MIGRACIÓN v6: Sistema i18n (idioma por servidor) ====================
             if current_version < 6:
-                print("🔄 Ejecutando migración v6: Sistema de internacionalización (i18n)...")
+                self.log.info("Migración v6: Sistema de internacionalización (i18n)...")
                 
                 # Añadir columna language a servers
                 try:
                     cursor.execute("ALTER TABLE servers ADD COLUMN language TEXT DEFAULT 'es'")
-                    print("   ✅ Columna 'language' añadida a tabla servers")
+                    self.log.info("Columna 'language' añadida a tabla servers")
                 except sqlite3.OperationalError:
-                    print("   ⚠️ Columna 'language' ya existe, saltando...")
+                    self.log.debug("Columna 'language' ya existe, saltando...")
                 
                 self._set_schema_version(cursor, 6, "Sistema de internacionalización (i18n) implementado")
-                print("✅ Migración v6: Sistema i18n listo. Idiomas disponibles: es, en")
+                self.log.info("✅ Migración v6: Sistema i18n listo. Idiomas disponibles: es, en")
+            
+            # ==================== MIGRACIÓN v7: notification_sent_at para delays justos ====================
+            if current_version < 7:
+                self.log.info("Migración v7: Timestamp real de notificación para cálculo justo de delays...")
+                
+                # Añadir columna notification_sent_at a servers
+                try:
+                    cursor.execute("ALTER TABLE servers ADD COLUMN notification_sent_at TEXT DEFAULT NULL")
+                    self.log.info("   Columna 'notification_sent_at' añadida a tabla servers")
+                except sqlite3.OperationalError:
+                    self.log.debug("   Columna 'notification_sent_at' ya existe, saltando...")
+                
+                self._set_schema_version(cursor, 7, "Sistema de delays justos (desde notificación real)")
+                self.log.info("✅ Migración v7: Delays ahora se calculan desde notificación enviada, no hora programada")
     
     def _auto_initialize_seasons(self):
         """
@@ -441,7 +459,7 @@ class Database:
             table_exists = cursor.fetchone() is not None
             
             if not table_exists:
-                print("🔄 Primera inicialización: Creando tablas de seasons...")
+                self.log.info("🔄 Primera inicialización: Creando tablas de seasons...")
             
             # ==================== TABLA SEASONS ====================
             cursor.execute('''
@@ -543,7 +561,7 @@ class Database:
             
             if not active_season:
                 # Primera inicialización: crear solo la temporada actual
-                print("🔄 Inicializando sistema de temporadas...")
+                self.log.info("🔄 Inicializando sistema de temporadas...")
                 
                 # Crear y activar temporada actual según el año
                 # 2025 → preseason, 2026 → season_1, etc.
@@ -565,10 +583,10 @@ class Database:
                 conn.commit()
                 
                 if not table_exists:
-                    print(f"✅ Sistema de seasons inicializado:")
-                    print(f"   • {season_info['name']} ({season_info['id']}) activa")
+                    self.log.info(f"✅ Sistema de seasons inicializado:")
+                    self.log.info(f"   • {season_info['name']} ({season_info['id']}) activa")
             elif not table_exists:
-                print(f"ℹ️  Sistema de seasons inicializado: {active_season[0]} activa")
+                self.log.info(f"ℹ️  Sistema de seasons inicializado: {active_season[0]} activa")
     
     # ==================== MÉTODOS DE SERVIDORES ====================
     
@@ -650,6 +668,19 @@ class Database:
         """Obtener la hora de apertura generada AYER (para cálculo de margen)"""
         config = self.get_server_config(guild_id)
         return config.get('last_daily_pole_time') if config else None
+    
+    def set_notification_sent_at(self, guild_id: int, timestamp: str):
+        """Guardar timestamp de cuando se envió la notificación (ISO format)"""
+        self.update_server_config(guild_id, notification_sent_at=timestamp)
+    
+    def get_notification_sent_at(self, guild_id: int) -> Optional[str]:
+        """Obtener timestamp de cuando se envió la notificación de apertura"""
+        config = self.get_server_config(guild_id)
+        return config.get('notification_sent_at') if config else None
+    
+    def clear_notification_sent_at(self, guild_id: int):
+        """Limpiar timestamp de notificación (al generar nueva hora)"""
+        self.update_server_config(guild_id, notification_sent_at=None)
     
     # ==================== MÉTODOS DE USUARIOS ====================
     
@@ -848,16 +879,32 @@ class Database:
             ''', (user_id, guild_id, limit))
             return [dict(row) for row in cursor.fetchall()]
     
-    def get_poles_today(self, guild_id: int) -> List[Dict]:
-        """Obtener todos los poles del día actual"""
+    def get_poles_today(self, guild_id: int, use_pole_date: bool = False) -> List[Dict]:
+        """Obtener todos los poles del día actual
+        
+        Args:
+            guild_id: ID del servidor
+            use_pole_date: Si True, usa pole_date (fecha efectiva) en vez de user_time.
+                          Útil para contar cuotas correctamente (marraneros no cuentan para hoy)
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             today = datetime.now().date().isoformat()
-            cursor.execute('''
-                SELECT * FROM poles 
-                WHERE guild_id = ? AND DATE(user_time) = ?
-                ORDER BY user_time ASC
-            ''', (guild_id, today))
+            
+            if use_pole_date:
+                # Usar pole_date (fecha efectiva) - marraneros no contarán para hoy
+                cursor.execute('''
+                    SELECT * FROM poles 
+                    WHERE guild_id = ? AND pole_date = ?
+                    ORDER BY user_time ASC
+                ''', (guild_id, today))
+            else:
+                # Usar user_time (comportamiento original) - para historial
+                cursor.execute('''
+                    SELECT * FROM poles 
+                    WHERE guild_id = ? AND DATE(user_time) = ?
+                    ORDER BY user_time ASC
+                ''', (guild_id, today))
             return [dict(row) for row in cursor.fetchall()]
     
     def get_last_pole_opening_time(self, guild_id: int) -> Optional[str]:
@@ -895,23 +942,56 @@ class Database:
             row = cursor.fetchone()
             return dict(row) if row else None
     
-    def get_user_pole_on_date_global(self, user_id: int, date_str: str) -> Optional[Dict]:
+    def get_user_pole_on_date_global(self, user_id: int, date_str: str, exclude_created_today: bool = False) -> Optional[Dict]:
         """
         Verificar si un usuario hizo pole en CUALQUIER servidor en una fecha específica.
         Retorna el primer pole encontrado o None.
+        
+        Args:
+            user_id: ID del usuario
+            date_str: Fecha en formato YYYY-MM-DD
+            exclude_created_today: Si True, excluye poles creados hoy (útil para validar marraneros)
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            # Usar pole_date (fecha efectiva) si existe, sino fallback a DATE(user_time)
-            cursor.execute('''
-                SELECT * FROM poles 
-                WHERE user_id = ? AND (pole_date = ? OR (pole_date IS NULL AND DATE(user_time) = ?))
-                ORDER BY user_time ASC
-                LIMIT 1
-            ''', (user_id, date_str, date_str))
+            
+            if exclude_created_today:
+                # Excluir poles creados hoy (marraneros hechos hoy no cuentan como "ya hiciste pole ayer")
+                today_str = datetime.now().date().isoformat()
+                cursor.execute('''
+                    SELECT * FROM poles 
+                    WHERE user_id = ? 
+                      AND (pole_date = ? OR (pole_date IS NULL AND DATE(user_time) = ?))
+                      AND DATE(created_at) != ?
+                    ORDER BY user_time ASC
+                    LIMIT 1
+                ''', (user_id, date_str, date_str, today_str))
+            else:
+                # Usar pole_date (fecha efectiva) si existe, sino fallback a DATE(user_time)
+                cursor.execute('''
+                    SELECT * FROM poles 
+                    WHERE user_id = ? AND (pole_date = ? OR (pole_date IS NULL AND DATE(user_time) = ?))
+                    ORDER BY user_time ASC
+                    LIMIT 1
+                ''', (user_id, date_str, date_str))
+            
             row = cursor.fetchone()
             return dict(row) if row else None
     
+    def get_user_pole_dates_global(self, user_id: int, limit: int = 120) -> List[str]:
+        """Obtener lista de fechas (YYYY-MM-DD) en las que el usuario hizo pole en cualquier servidor.
+        Ordenadas de más reciente a más antigua. Usa pole_date (fecha efectiva)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT COALESCE(pole_date, DATE(user_time)) as effective_date
+                FROM poles
+                WHERE user_id = ?
+                ORDER BY effective_date DESC
+                LIMIT ?
+            ''', (user_id, limit))
+            return [row['effective_date'] for row in cursor.fetchall()]
+
     def user_has_pole_on_date(self, user_id: int, guild_id: int, date_str: str) -> bool:
         """Verificar si un usuario hizo pole en una fecha específica (YYYY-MM-DD)
         
@@ -1182,9 +1262,10 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT ss.*, u.username, u.represented_guild_id
+                SELECT ss.*, u.username, gu.represented_guild_id
                 FROM season_stats ss
                 JOIN users u ON ss.user_id = u.user_id AND ss.guild_id = u.guild_id
+                LEFT JOIN global_users gu ON ss.user_id = gu.user_id
                 WHERE ss.guild_id = ? AND ss.season_id = ?
                 ORDER BY ss.season_points DESC
                 LIMIT ?
@@ -1199,12 +1280,13 @@ class Database:
                 SELECT 
                     ss.user_id,
                     MAX(u.username) as username,
-                    MAX(u.represented_guild_id) as represented_guild_id,
+                    MAX(gu.represented_guild_id) as represented_guild_id,
                     SUM(ss.season_points) as total_season_points,
                     SUM(ss.season_poles) as total_season_poles,
                     MAX(ss.season_best_streak) as best_season_streak
                 FROM season_stats ss
                 JOIN users u ON ss.user_id = u.user_id AND ss.guild_id = u.guild_id
+                LEFT JOIN global_users gu ON ss.user_id = gu.user_id
                 WHERE ss.season_id = ?
                 GROUP BY ss.user_id
                 ORDER BY total_season_points DESC
@@ -1244,6 +1326,16 @@ class Database:
             ''', (guild_id, season_id, limit))
             return [dict(row) for row in cursor.fetchall()]
     
+    def get_guild_active_user_ids(self, guild_id: int) -> List[int]:
+        """Obtener lista de user_ids únicos que han hecho pole en un guild"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT DISTINCT user_id FROM poles WHERE guild_id = ?',
+                (guild_id,)
+            )
+            return [row['user_id'] for row in cursor.fetchall()]
+
     def get_total_active_users(self, guild_id: Optional[int] = None) -> int:
         """
         Obtener el número total de usuarios que han hecho al menos 1 pole.
@@ -1290,7 +1382,7 @@ class Database:
         """
         from utils.scoring import get_rank_info
         
-        print(f"   📊 Iniciando finalización de temporada {season_id}...")
+        self.log.info(f"   📊 Iniciando finalización de temporada {season_id}...")
         
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -1299,7 +1391,7 @@ class Database:
             cursor.execute('SELECT DISTINCT guild_id FROM season_stats WHERE season_id = ?', (season_id,))
             guilds = [row[0] for row in cursor.fetchall()]
             
-            print(f"      └─ Servidores afectados: {len(guilds)}")
+            self.log.info(f"      └─ Servidores afectados: {len(guilds)}")
             
             total_saved = 0
             total_badges = 0
@@ -1357,9 +1449,9 @@ class Database:
                 UPDATE seasons SET is_active = 0 WHERE season_id = ?
             ''', (season_id,))
             
-            print(f"      └─ ✅ {total_saved} registros guardados en historial")
-            print(f"      └─ ✅ {total_badges} badges otorgados")
-            print(f"      └─ ✅ Temporada marcada como inactiva")
+            self.log.info(f"      └─ ✅ {total_saved} registros guardados en historial")
+            self.log.info(f"      └─ ✅ {total_badges} badges otorgados")
+            self.log.info(f"      └─ ✅ Temporada marcada como inactiva")
     
     def get_user_badges(self, user_id: int, guild_id: int) -> List[Dict]:
         """Obtener todos los badges ganados por un usuario"""
@@ -1390,46 +1482,46 @@ class Database:
         from utils.scoring import get_current_season, get_season_info
         
         # Banner de inicio
-        print(f"\n{'='*60}")
-        print(f"🔄 INICIO DE MIGRACIÓN DE TEMPORADA")
-        print(f"{'='*60}")
-        print(f"⏰ Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self.log.info(f"\n{'='*60}")
+        self.log.info(f"🔄 INICIO DE MIGRACIÓN DE TEMPORADA")
+        self.log.info(f"{'='*60}")
+        self.log.info(f"⏰ Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Determinar season objetivo
         if target_season_id is None:
             target_season_id = get_current_season()
         
-        print(f"🎯 Temporada objetivo: {target_season_id}")
-        print(f"🔧 Modo force: {force}")
+        self.log.info(f"🎯 Temporada objetivo: {target_season_id}")
+        self.log.debug(f"🔧 Modo force: {force}")
         
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
             # Obtener season activa actual
-            print(f"\n📋 PASO 0: Verificando temporada activa actual...")
+            self.log.debug(f"\n📋 PASO 0: Verificando temporada activa actual...")
             cursor.execute('SELECT season_id FROM seasons WHERE is_active = 1')
             row = cursor.fetchone()
             active_season = row[0] if row else None
-            print(f"   └─ Temporada activa: {active_season if active_season else 'Ninguna'}")
+            self.log.info(f"   └─ Temporada activa: {active_season if active_season else 'Ninguna'}")
             
             # Si ya está en la season correcta y no es forzado
             if active_season == target_season_id and not force:
-                print(f"   └─ ℹ️  Ya estamos en {target_season_id}, no se requiere migración")
-                print(f"{'='*60}\n")
+                self.log.info(f"   └─ ℹ️  Ya estamos en {target_season_id}, no se requiere migración")
+                self.log.info(f"{'='*60}\n")
                 return False
             
             # PASO 1: Finalizar season anterior (si existe)
             if active_season:
-                print(f"\n📊 PASO 1: Finalizando temporada {active_season}...")
+                self.log.info(f"\n📊 PASO 1: Finalizando temporada {active_season}...")
                 start_time = datetime.now()
                 self.finalize_season(active_season)
                 elapsed = (datetime.now() - start_time).total_seconds()
-                print(f"   └─ ✅ Temporada finalizada en {elapsed:.2f}s")
+                self.log.info(f"   └─ ✅ Temporada finalizada en {elapsed:.2f}s")
             else:
-                print(f"\n⏭️  PASO 1: Omitido (no hay temporada previa)")
+                self.log.info(f"\n⏭️  PASO 1: Omitido (no hay temporada previa)")
             
             # PASO 2: Crear nueva season si no existe
-            print(f"\n🆕 PASO 2: Creando/verificando temporada {target_season_id}...")
+            self.log.debug(f"\n🆕 PASO 2: Creando/verificando temporada {target_season_id}...")
             season_info = get_season_info(target_season_id)
             cursor.execute('''
                 INSERT OR IGNORE INTO seasons 
@@ -1443,33 +1535,33 @@ class Database:
                 season_info['is_ranked']
             ))
             if cursor.rowcount > 0:
-                print(f"   └─ ✅ Nueva temporada creada")
+                self.log.info(f"   └─ ✅ Nueva temporada creada")
             else:
-                print(f"   └─ ℹ️  Temporada ya existía")
+                self.log.info(f"   └─ ℹ️  Temporada ya existía")
             
             # PASO 3: Activar nueva season
-            print(f"\n🎯 PASO 3: Activando temporada {target_season_id}...")
+            self.log.info(f"\n🎯 PASO 3: Activando temporada {target_season_id}...")
             cursor.execute('UPDATE seasons SET is_active = 0')  # Desactivar todas
             deactivated = cursor.rowcount
             cursor.execute('''
                 UPDATE seasons SET is_active = 1 
                 WHERE season_id = ?
             ''', (target_season_id,))
-            print(f"   └─ ✅ {deactivated} temporada(s) desactivada(s)")
-            print(f"   └─ ✅ Temporada {target_season_id} activada")
+            self.log.info(f"   └─ ✅ {deactivated} temporada(s) desactivada(s)")
+            self.log.info(f"   └─ ✅ Temporada {target_season_id} activada")
             
             # PASO 4: Reset de rachas actuales (GLOBALES)
-            print(f"\n♻️  PASO 4: Reseteando rachas actuales...")
+            self.log.info(f"\n♻️  PASO 4: Reseteando rachas actuales...")
             cursor.execute('''
                 UPDATE global_users SET 
                     current_streak = 0,
                     last_pole_date = NULL
             ''')
             affected = cursor.rowcount
-            print(f"   └─ ✅ {affected} usuario(s) reseteados (current_streak → 0)")
+            self.log.info(f"   └─ ✅ {affected} usuario(s) reseteados (current_streak → 0)")
             
             # PASO 5: Limpieza opcional de season_stats antiguas (reducir basura)
-            print(f"\n🗑️  PASO 5: Limpiando season_stats antiguas (mantener últimas 3)...")
+            self.log.info(f"\n🗑️  PASO 5: Limpiando season_stats antiguas (mantener últimas 3)...")
             try:
                 cursor.execute('''
                     DELETE FROM season_stats
@@ -1481,20 +1573,20 @@ class Database:
                 ''')
                 deleted = cursor.rowcount
                 if deleted > 0:
-                    print(f"   └─ ✅ {deleted} registro(s) antiguos eliminados")
+                    self.log.info(f"   └─ ✅ {deleted} registro(s) antiguos eliminados")
                 else:
-                    print(f"   └─ ℹ️  No hay registros antiguos para eliminar")
+                    self.log.info(f"   └─ ℹ️  No hay registros antiguos para eliminar")
             except Exception as e:
-                print(f"   └─ ⚠️  Error en limpieza: {e}")
+                self.log.error(f"   └─ ⚠️  Error en limpieza: {e}")
             
             # Banner de finalización
-            print(f"\n{'='*60}")
-            print(f"✅ MIGRACIÓN COMPLETADA CON ÉXITO")
-            print(f"{'='*60}")
-            print(f"📌 Temporada activa: {target_season_id}")
-            print(f"📊 Cambio: {active_season or 'inicial'} → {target_season_id}")
-            print(f"⏰ Finalizado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"{'='*60}\n")
+            self.log.info(f"\n{'='*60}")
+            self.log.info(f"✅ MIGRACIÓN COMPLETADA CON ÉXITO")
+            self.log.info(f"{'='*60}")
+            self.log.info(f"📌 Temporada activa: {target_season_id}")
+            self.log.info(f"📊 Cambio: {active_season or 'inicial'} → {target_season_id}")
+            self.log.info(f"⏰ Finalizado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            self.log.info(f"{'='*60}\n")
             return True
     
     def verify_migration_integrity(self, season_id: str) -> Dict[str, Any]:
@@ -1561,6 +1653,6 @@ class Database:
         """
         migrated = self.migrate_season()
         if not migrated:
-            print("ℹ️  Season actual ya está activa, no se requiere acción")
+            self.log.info("ℹ️  Season actual ya está activa, no se requiere acción")
     
     # ==================== MÉTODOS DE REPRESENTACIÓN DE SERVIDOR ====================

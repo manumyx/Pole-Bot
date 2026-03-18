@@ -315,7 +315,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'mystats.season_points': '💰 **Puntos:** {points}',
         'mystats.season_poles': '🏁 **Poles:** {poles}',
         'mystats.breakdown': '📈 Desglose',
-        'mystats.breakdown_entry': '⚡ Críticos: {critical} | 🏎️ Rápidos: {fast} | 🏁 Normales: {normal} | 🐷 Marraneros: {marranero}',
+        'mystats.breakdown_entry': '⚡ Critical: {critical} | 🏎️ Fast: {fast} | 🏁 Normal: {normal} | 🐷 Sleepyheads: {marranero}',
         'mystats.field.status': 'Estado',
         
         # ==================== MIDNIGHT SUMMARY ====================
@@ -496,7 +496,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'help.how_to_play': '🎮 Cómo Jugar',
         'help.how_to_play_desc': '1. Espera la **notificación de apertura** (hora aleatoria cada día)\n2. Escribe exactamente **`pole`** en el canal configurado\n3. ¡Gana puntos según tu velocidad!\n⚠️ Solo 1 pole al día, en cualquier servidor',
         'help.categories': '🏆 Categorías de Pole',
-        'help.categories_desc': '💎 **Crítica** (0-10 min): 20 pts\n    └ Solo 10% del servidor puede reclamarla\n⚡ **Veloz** (10 min - 3h): 15 pts\n    └ Solo 30% del servidor puede reclamarla\n🏁 **Normal** (3h - 00:00): 10 pts\n    └ Sin límite de usuarios\n🐷 **Marranero** (día siguiente): 5 pts\n    └ Sin límite de usuarios',
+        'help.categories_desc': '💎 **Critical** (0-10 min): 20 pts\n    └ Only 10% of server can claim it\n⚡ **Fast** (10 min - 3h): 15 pts\n    └ Only 30% of server can claim it\n🏁 **Normal** (3h - 00:00): 10 pts\n    └ No user limit\n🐷 **Sleepyhead** (next day): 5 pts\n    └ No user limit',
         'help.streaks': '<a:fire:1440018375144374302> Sistema de Rachas',
         'help.streaks_desc': 'Haz pole días consecutivos para aumentar tu multiplicador\n• 7 días: x1.1\n• 30 días: x1.4\n• 90 días: x1.8\n• 300 días: x2.5 (máximo)',
         'help.commands': '⚙️ Comandos',
@@ -513,7 +513,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'season.your_progress': '📊 Tu Progreso en {season}',
         'season.your_progress_desc': '🎖️ **Rango:** {emoji} {name}\n💰 **Puntos:** {points}\n🏁 **Poles:** {poles}\n<a:fire:1440018375144374302> **Mejor Racha:** {streak} días',
         'season.breakdown': '📈 Desglose',
-        'season.breakdown_desc': '💎 Críticas: {critical} | ⚡ Veloces: {fast}\n🏁 Normales: {normal} | 🐷 Marraneros: {marranero}',
+        'season.breakdown_desc': '💎 Critical: {critical} | ⚡ Fast: {fast}\n🏁 Normal: {normal} | 🐷 Sleepyheads: {marranero}',
         'season.no_poles': 'Aún no has hecho ningún pole en {season}.\n¡Empieza ahora y escala el ranking!',
         'season.footer': 'Usa /history para ver temporadas pasadas 🔥',
         'season.period': '**Período:** {start} → {end}',
@@ -636,6 +636,11 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         
         # ==================== BUTTONS ====================
         'button.refresh': 'Actualizar Vista',
+        
+        # ==================== DOWNTIME COMPENSATION ====================
+        'compensation.apology_title': '🛠️ Disculpas por el Downtime',
+        'compensation.apology_desc': 'El bot estuvo caído el **{date}** por problemas técnicos.\n\n**{count} usuarios** han sido compensados automáticamente:\n• ✅ Pole normal otorgado retroactivamente\n• {fire} Rachas mantenidas/activadas\n• 🏆 Puntos de temporada añadidos\n\n**Gracias por vuestra paciencia.** 🙏',
+        'compensation.apology_footer': 'Compensación automática global • {count} usuarios',
     },
     
     'en': {
@@ -752,12 +757,12 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.type.critical': 'CRITICAL',
         'pole.type.fast': 'FAST',
         'pole.type.normal': 'POLE',
-        'pole.type.marranero': 'MARRANERO',
+        'pole.type.marranero': 'SLEEPYHEAD',
         
         'pole.critical': '⚡ CRITICAL POLE! Just **{minutes} minutes**. Absolutely cracked.',
         'pole.fast': '🏎️ Quick pole in **{hours}h {minutes}m**. Pretty solid.',
         'pole.normal': '✅ Pole secured in **{hours}h {minutes}m**.',
-        'pole.marranero': '🐷 **Marranero pole**... {hours}h late. Better late than never.',
+        'pole.marranero': '🐷 **Sleepyhead pole**... {hours}h late. Better late than never.',
         'pole.points': '+**{points}** pts',
         'pole.streak': 'Streak: **{streak}** days',
         'pole.streak_multiplier': 'Multiplier: **x{multiplier}**',
@@ -837,14 +842,14 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} ✅ Pole grabbed ({delay}). All good.',
         ],
         'pole.notification.description_marranero': [
-            '{mention} 🐷 Marranero pole... {delay} late. Better late than never.',
-            '{mention} 🐷 Marranero: {delay}. Wake up earlier tomorrow.',
+            '{mention} 🐷 Sleepyhead pole... {delay} late. Better late than never.',
+            '{mention} 🐷 Sleepyhead: {delay}. Wake up earlier tomorrow.',
             '{mention} 🐷 {delay} delay. Quite the oversleep.',
-            '{mention} 🐷 Marranero in {delay}. At least you showed up.',
+            '{mention} 🐷 Sleepyhead in {delay}. At least you showed up.',
             '{mention} 🐷 {delay} late... You a whole mess.',
-            '{mention} 🐷 MARRANERO in {delay}. Shameless.',
+            '{mention} 🐷 SLEEPYHEAD in {delay}. Shameless.',
             '{mention} 🐷 {delay} delay. Overslept hard.',
-            '{mention} 🐷 Marranero ({delay}). The audacity lmao.',
+            '{mention} 🐷 Sleepyhead ({delay}). The audacity lmao.',
             '{mention} 🐷 {delay}... Bro was in a coma.',
         ],
         
@@ -852,7 +857,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.footer.critical': 'let\'s see if you can keep up 🔥',
         'pole.footer.fast': 'pretty nice 💪',
         'pole.footer.normal': 'solid grab 👌',
-        'pole.footer.marranero': 'wake up earlier tomorrow 🥱',
+        'pole.footer.marranero': 'sleepyhead mode 🥱',
         
         # ==================== PROFILE ====================
         'profile.title': '📊 {user}\'s Stats',
@@ -889,7 +894,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'profile.critical_poles': '⚡ Critical',
         'profile.fast_poles': '🏎️ Fast',
         'profile.normal_poles': '✅ Normal',
-        'profile.marranero_poles': '🐷 Marranero',
+        'profile.marranero_poles': '🐷 Sleepyheads',
         'profile.speed_stats': '⏱️ Speed Stats',
         'profile.best_time': '🥇 Best Time',
         'profile.minutes': '{minutes} min',
@@ -908,7 +913,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'profile.stats.critical': '⚡ Critical: **{count}**',
         'profile.stats.fast': '🏎️ Fast: **{count}**',
         'profile.stats.normal': '🏁 Normal: **{count}**',
-        'profile.stats.marranero': '🐷 Marranero: **{count}**',
+        'profile.stats.marranero': '🐷 Sleepyheads: **{count}**',
         
         # ==================== LEADERBOARD ====================
         'leaderboard.title': '🏆 {scope} LEADERBOARD - {type}',
@@ -945,7 +950,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'mystats.season_points': '💰 **Points:** {points}',
         'mystats.season_poles': '🏁 **Poles:** {poles}',
         'mystats.breakdown': '📈 Breakdown',
-        'mystats.breakdown_entry': '⚡ Critical: {critical} | 🏎️ Fast: {fast} | 🏁 Normal: {normal} | 🐷 Marranero: {marranero}',
+        'mystats.breakdown_entry': '⚡ Critical: {critical} | 🏎️ Fast: {fast} | 🏁 Normal: {normal} | 🐷 Sleepyheads: {marranero}',
         'mystats.field.status': 'Status',
         
         # ==================== MIDNIGHT SUMMARY ====================
@@ -1123,7 +1128,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'help.how_to_play': '🎮 How to Play',
         'help.how_to_play_desc': '1. Wait for **opening notification** (random time daily)\n2. Type exactly **`pole`** in the configured channel\n3. Earn points based on speed!\n⚠️ Only 1 pole per day, across all servers',
         'help.categories': '🏆 Pole Categories',
-        'help.categories_desc': '💎 **Critical** (0-10 min): 20 pts\n    └ Only 10% of server can claim it\n⚡ **Fast** (10 min - 3h): 15 pts\n    └ Only 30% of server can claim it\n🏁 **Normal** (3h - 00:00): 10 pts\n    └ No user limit\n🐷 **Late** (next day): 5 pts\n    └ No user limit',
+        'help.categories_desc': '💎 **Critical** (0-10 min): 20 pts\n    └ Only 10% of server can claim it\n⚡ **Fast** (10 min - 3h): 15 pts\n    └ Only 30% of server can claim it\n🏁 **Normal** (3h - 00:00): 10 pts\n    └ No user limit\n🐷 **Sleepyhead** (next day): 5 pts\n    └ No user limit',
         'help.streaks': '<a:fire:1440018375144374302> Streak System',
         'help.streaks_desc': 'Hit poles on consecutive days to increase your multiplier\n• 7 days: x1.1\n• 30 days: x1.4\n• 90 days: x1.8\n• 300 days: x2.5 (max)',
         'help.commands': '⚙️ Commands',
@@ -1140,7 +1145,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'season.your_progress': '📊 Your Progress in {season}',
         'season.your_progress_desc': '🎖️ **Rank:** {emoji} {name}\n💰 **Points:** {points}\n🏁 **Poles:** {poles}\n<a:fire:1440018375144374302> **Best Streak:** {streak} days',
         'season.breakdown': '📈 Breakdown',
-        'season.breakdown_desc': '💎 Critical: {critical} | ⚡ Fast: {fast}\n🏁 Normal: {normal} | 🐷 Late: {marranero}',
+        'season.breakdown_desc': '💎 Critical: {critical} | ⚡ Fast: {fast}\n🏁 Normal: {normal} | 🐷 Sleepyheads: {marranero}',
         'season.no_poles': 'You haven\'t hit any poles in {season} yet.\nStart now and climb the ranks!',
         'season.footer': 'Use /history to view past seasons 🔥',
         'season.period': '**Period:** {start} → {end}',
@@ -1269,12 +1274,28 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         
         # ==================== BUTTONS ====================
         'button.refresh': 'Refresh View',
+        
+        # ==================== DOWNTIME COMPENSATION ====================
+        'compensation.apology_title': '🛠️ Apologies for the Downtime',
+        'compensation.apology_desc': 'The bot was down on **{date}** due to technical issues.\n\n**{count} users** have been automatically compensated:\n• ✅ Normal pole granted retroactively\n• {fire} Streaks maintained/activated\n• 🏆 Season points added\n\n**Thanks for your patience.** 🙏',
+        'compensation.apology_footer': 'Global automatic compensation • {count} users',
     }
 }
 
 # ==================== FUNCIÓN PRINCIPAL ====================
 
-def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kwargs) -> str:
+# Singleton de Database para evitar crear instancias en cada llamada a t()
+_db_instance = None
+
+def _get_db():
+    """Obtener instancia singleton de Database para i18n"""
+    global _db_instance
+    if _db_instance is None:
+        from utils.database import Database
+        _db_instance = Database()
+    return _db_instance
+
+def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kwargs: Any) -> str:
     """
     Traduce un string según el idioma del servidor
     
@@ -1295,9 +1316,7 @@ def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kw
     # Determinar idioma
     if lang is None:
         if guild_id is not None:
-            # Lazy import para evitar circular dependency
-            from utils.database import Database
-            db = Database()
+            db = _get_db()
             lang = db.get_server_language(guild_id)
         else:
             lang = 'es'  # Default
@@ -1322,7 +1341,7 @@ def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kw
     return template
 
 
-def get_available_languages() -> list:
+def get_available_languages() -> List[str]:
     """Retorna lista de idiomas disponibles"""
     return list(TRANSLATIONS.keys())
 

@@ -2,7 +2,7 @@
 Sistema de Puntuación y Rachas (v1.0 - Hora Aleatoria + Seasons)
 Calcula puntos, multiplicadores, clasifica por retraso y gestiona rachas
 """
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Union
 from datetime import datetime
 
 # ==================== BADGES DE RANGO (EMOJIS CUSTOM) ====================
@@ -17,7 +17,7 @@ BADGE_RUBY = "<:badge_6:1440023135524094046>"      # Rubí
 # ==================== SISTEMA DE SEASONS ====================
 # Configuración de temporadas
 # Solo se define preseason explícitamente, las demás se generan dinámicamente
-SEASON_CONFIG = {
+SEASON_CONFIG: Dict[str, Dict[str, Union[str, bool]]] = {
     'preseason': {
         'name': 'Pre-Temporada',
         'start_date': '2025-01-01',  # Todo 2025 es preseason
@@ -26,7 +26,7 @@ SEASON_CONFIG = {
     }
 }
 
-def get_season_config(year: int) -> dict:
+def get_season_config(year: int) -> Dict[str, Union[str, bool]]:
     """
     Obtener configuración de una temporada por año
     2025 → preseason
@@ -85,7 +85,7 @@ POINTS_CONFIG = {
 
 # Cuotas por categoría: porcentaje de usuarios (sin bots) que pueden reclamar cada tipo
 # Ejemplo: servidor de 100 usuarios → crítico max 10, veloz max 30
-QUOTA_CONFIG = {
+QUOTA_CONFIG: Dict[str, Dict[str, Optional[Union[int, float]]]] = {
     'critical': {
         'max_minutes': 10,      # Solo disponible primeros 10 minutos
         'max_percentage': 0.10  # Solo 10% del servidor puede reclamarlo
@@ -185,9 +185,13 @@ def classify_delay(delay_minutes: int, is_next_day: bool = False) -> str:
         return 'critical'
     
     # Clasificar según límites de tiempo de QUOTA_CONFIG
-    if delay_minutes < QUOTA_CONFIG['critical']['max_minutes']:
+    critical_max = QUOTA_CONFIG['critical']['max_minutes']
+    fast_max = QUOTA_CONFIG['fast']['max_minutes']
+    
+    # Type narrowing: sabemos que critical y fast siempre tienen valores numéricos
+    if critical_max is not None and delay_minutes < critical_max:
         return 'critical'
-    if delay_minutes < QUOTA_CONFIG['fast']['max_minutes']:
+    if fast_max is not None and delay_minutes < fast_max:
         return 'fast'
     # Desde 3h hasta fin del día (00:00) es normal
     return 'normal'
@@ -368,7 +372,7 @@ def get_current_season(db_path: str = "data/pole_bot.db") -> str:
         season_num = year - 2025  # 2026→1, 2027→2, ...
         return f'season_{season_num}'
 
-def get_season_info(season_id: Optional[str] = None) -> dict:
+def get_season_info(season_id: Optional[str] = None) -> Dict[str, Union[str, bool]]:
     """
     Obtener información de una season
     

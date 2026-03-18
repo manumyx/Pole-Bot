@@ -1,70 +1,93 @@
-# 🏁 Pole Bot v2.0 - Pre-Año Nuevo Edition
+# Pole Bot
 
 [![Discord](https://img.shields.io/badge/Discord-Bot-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-Bot de Discord que implementa competiciones diarias de **pole position** con hora aleatoria, sistema de puntos por velocidad de respuesta, rachas progresivas y temporadas competitivas.
+Bot de Discord para competiciones diarias de pole: hora aleatoria, puntos por velocidad, rachas globales y temporadas anuales.
 
-## 🚀 Invitar al Bot
+## Que hace
 
-[![Añadir a Discord](https://img.shields.io/badge/Añadir_a_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1439710236876472482&permissions=277025770560&scope=bot%20applications.commands)
+- Apertura diaria con hora aleatoria por servidor.
+- Clasificacion por velocidad: critica, veloz, normal y marranero.
+- Rachas globales (compartidas entre todos los servidores).
+- Multiplicador progresivo de racha hasta x2.5.
+- Temporadas anuales con migracion automatica.
+- POLE REWIND en cambio de temporada (resumen local/global).
+- Sistema de notificaciones con failsafe para downtime.
 
-**Permisos necesarios:** Ver canales, Enviar mensajes, Gestionar mensajes, Añadir reacciones, Usar comandos de aplicación, Leer historial
+## Comandos principales
 
----
+- `/settings` Configuracion del servidor (admins).
+- `/profile` Perfil y estadisticas del usuario.
+- `/leaderboard` Rankings local/global.
+- `/streak` Ranking de rachas.
+- `/season` Info de temporada actual.
+- `/history` Historial de poles del usuario.
+- `/polehelp` Ayuda rapida dentro de Discord.
 
-## 🎆 NUEVO: POLE REWIND 🎬
+## Modo debug (solo DEBUG=1)
 
-Cada Año Nuevo, el bot envía automáticamente el **POLE REWIND** - un resumen cinematográfico de la temporada que termina:
+Si `DEBUG=1`, se carga `cogs/debug.py` con herramientas admin:
 
-- 🎊 **Felicitación personalizada** según temporada (especial para early adopters)
-- 🏆 **Hall of Fame Local** - Top 3 del servidor (Puntos, Poles, Rachas)
-- 🌍 **Hall of Fame Global** - Top 3 entre TODOS los servidores
-- 🚀 **Bienvenida a nueva temporada** con reset de stats
-- 📊 **Narrativa con carisma** - 5 mensajes secuenciales con delays
+- `/debug info`
+- `/debug diagnose`
+- `/debug test_migration`
+- `/debug compensate_downtime`
+- `/debug restore_streak`
+- `/debug restore_guild`
 
-El POLE REWIND se ejecuta automáticamente a las **00:00 del 1 de enero** tras la migración de temporada.
+## Requisitos
 
----
+- Python 3.8+
+- `discord.py>=2.3.0`
+- `python-dotenv>=1.0.0`
 
-## 🎯 Características Principales
+Instalacion:
 
-### 🎲 Hora Aleatoria Diaria
-- El bot genera una **hora diferente cada día** (margen mínimo de 4 horas entre días)
-- Notificación automática cuando se abre el pole
-- Configuración por servidor con rango horario personalizable
-- **Jitter aleatorio** de ±30 minutos para reducir predictibilidad
+```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux/Mac
+source .venv/bin/activate
 
-### ⚡ Sistema de Puntos por Velocidad
-Cuanto más rápido respondas, más puntos ganas:
-- **🏆 CRÍTICA** (0-10 min): 20 pts • Solo 10% del servidor
-- **⚡ VELOZ** (10 min-3h): 15 pts • Solo 30% del servidor  
-- **🎯 POLE** (3h-00:00): 10 pts • Sin límite
-- **🐷 MARRANERO** (después 00:00): 5 pts • Sin límite
+pip install -r requirements.txt
+```
 
-### 🔥 Rachas Progresivas
-Multiplicadores por días consecutivos (hasta **x2.5** a los 300 días):
-- 7 días: x1.1 → 14 días: x1.2 → 30 días: x1.4 → 365 días: x2.5
+`.env` minimo:
 
-### 🏆 Sistema de Temporadas
-- **Temporadas anuales** con reset automático cada 1 de enero
-- **POLE REWIND** automático con estadísticas finales
-- Historial completo de temporadas finalizadas
-- Badges permanentes por posición final
-- Leaderboards por temporada (lifetime, actual, finalizadas)
-- **Sistema de migración robusto** con verificación de integridad
+```env
+DISCORD_TOKEN=tu_token
+DEBUG=0
+# Opcional en debug:
+# DEBUG_ALLOWLIST=123456789012345678
+```
 
-### 🎖️ Rangos y Badges
-Sistema de 6 rangos según puntos de temporada:
-- 💎 Rubí (2000+ pts) • 🔮 Amatista (1500+ pts) • 💎 Diamante (1000+ pts)
-- 🥇 Oro (600+ pts) • 🥈 Plata (300+ pts) • 🥉 Bronce (100+ pts)
+Iniciar:
 
-### 🌐 Sistema Multi-Servidor
-- Un usuario puede participar en múltiples servidores
-- **Una pole por día** a nivel global (previene spam)
-- Representación de servidor para competición entre comunidades
-- Rankings locales y globales
-- **Top 3 globales** en POLE REWIND de Año Nuevo
+```bash
+python main.py
+```
 
----
+## Base de datos y migraciones
+
+- SQLite en `data/pole_bot.db`.
+- Migraciones automaticas al iniciar.
+- Schema actual: `v7`.
+
+No necesitas ejecutar scripts de inicializacion para arrancar el bot en un entorno nuevo.
+
+## Documentacion
+
+- Guia de deploy: [DEPLOYMENT.md](DEPLOYMENT.md)
+- Indice de docs: [docs/README.md](docs/README.md)
+- Reglas de juego: [docs/RULES.md](docs/RULES.md)
+- Sistema de badges: [docs/ACHIEVEMENTS.md](docs/ACHIEVEMENTS.md)
+- Internacionalizacion: [docs/I18N.md](docs/I18N.md)
+
+## Notas de operacion
+
+- El bot usa solo slash commands para usuarios finales.
+- Los comandos debug solo estan disponibles cuando `DEBUG=1` y el usuario esta en `DEBUG_ALLOWLIST`.
+- En cambio de año, el bot migra temporada automaticamente y puede emitir POLE REWIND.

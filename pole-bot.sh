@@ -227,7 +227,7 @@ cmd_start() {
     # Iniciar bot en segundo plano
     print_info "Iniciando bot..."
     source "$VENV_DIR/bin/activate"
-    nohup python3 "$MAIN_FILE" > "$LOG_FILE" 2>&1 &
+    nohup python3 "$MAIN_FILE" > /dev/null 2>&1 &
     echo $! > "$PID_FILE"
     
     sleep 2
@@ -419,8 +419,8 @@ Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$VENV_DIR/bin/python3 $MAIN_FILE
 Restart=always
 RestartSec=10
-StandardOutput=append:$LOG_FILE
-StandardError=append:$LOG_FILE
+StandardOutput=journal
+StandardError=journal
 
 # Security
 NoNewPrivileges=true

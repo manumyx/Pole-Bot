@@ -4,8 +4,12 @@ Como crear nuevos canales o hilos (por si quieres hacer pole automática)
 """
 import discord
 from discord.ext import commands
+import logging
 from typing import Optional
 from utils.i18n import t
+
+# Logger
+log = logging.getLogger('EventsCog')
 
 class EventsCog(commands.Cog):
     def __init__(self, bot):
@@ -53,11 +57,11 @@ class EventsCog(commands.Cog):
         
         try:
             await channel.send(embed=embed)
-            print(f"✅ Mensaje de bienvenida bilingüe enviado a {guild.name} (#{channel.name})")
+            log.info(f"✅ Mensaje de bienvenida bilingüe enviado a {guild.name} (#{channel.name})")
         except discord.Forbidden:
-            print(f"⚠️ Sin permisos para enviar mensaje de bienvenida en {guild.name}")
+            log.warning(f"⚠️ Sin permisos para enviar mensaje de bienvenida en {guild.name}")
         except Exception as e:
-            print(f"❌ Error enviando mensaje de bienvenida en {guild.name}: {e}")
+            log.error(f"❌ Error enviando mensaje de bienvenida en {guild.name}: {e}")
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -72,11 +76,11 @@ class EventsCog(commands.Cog):
         try:
             # Esperar un momento para que el canal esté completamente creado
             await channel.send(t('events.first_message_channel', channel.guild.id))
-            print(f"✅ Pole automática en nuevo canal: {channel.name}")
+            log.info(f"✅ Pole automática en nuevo canal: {channel.name}")
         except discord.Forbidden:
-            print(f"⚠️ Sin permisos para escribir en {channel.name}")
+            log.warning(f"⚠️ Sin permisos para escribir en {channel.name}")
         except Exception as e:
-            print(f"❌ Error en nuevo canal: {e}")
+            log.error(f"❌ Error en nuevo canal: {e}")
     
     @commands.Cog.listener()
     async def on_thread_create(self, thread):
@@ -89,61 +93,41 @@ class EventsCog(commands.Cog):
             
             # Escribir el primer mensaje
             await thread.send(t('events.first_message_thread', thread.guild.id))
-            print(f"✅ Pole automática en nuevo hilo: {thread.name}")
+            log.info(f"✅ Pole automática en nuevo hilo: {thread.name}")
         except discord.Forbidden:
-            print(f"⚠️ Sin permisos para escribir en el hilo {thread.name}")
+            log.warning(f"⚠️ Sin permisos para escribir en el hilo {thread.name}")
         except Exception as e:
-            print(f"❌ Error en nuevo hilo: {e}")
+            log.error(f"❌ Error en nuevo hilo: {e}")
     
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        """
-        Evento cuando un nuevo miembro se une al servidor
-        Puedes enviar un mensaje de bienvenida
-        """
-        # Buscar un canal de bienvenida o general
-        # Este es solo un ejemplo, puedes personalizarlo
-        
-        # Intenta encontrar un canal llamado "general" o "bienvenida"
-        welcome_channel = None
-        for channel in member.guild.text_channels:
-            if channel.name.lower() in ['general', 'bienvenida', 'welcome']:
-                welcome_channel = channel
-                break
-        
-        if welcome_channel:
-            try:
-                embed = discord.Embed(
-                    title="👋 ¡Bienvenido!",
-                    description=f"Dale la bienvenida a {member.mention}!",
-                    color=discord.Color.green()
-                )
-                embed.set_thumbnail(url=member.display_avatar.url)
-                await welcome_channel.send(embed=embed)
-            except:
-                pass  # Si hay error, simplemente ignorar
+    # @commands.Cog.listener()
+    # async def on_member_join(self, member):
+    #     """
+    #     Evento cuando un nuevo miembro se une al servidor
+    #     DESACTIVADO: No se envían mensajes de bienvenida
+    #     """
+    #     pass
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
         """Enviado cuando el bot entra por primera vez a un servidor."""
-        print(f"🎉 Bot añadido a nuevo servidor: {guild.name} (ID: {guild.id})")
-        print(f"   Miembros: {guild.member_count} | Canales de texto: {len(guild.text_channels)}")
+        log.info(f"🎉 Bot añadido a nuevo servidor: {guild.name} (ID: {guild.id})")
+        log.info(f"   Miembros: {guild.member_count} | Canales de texto: {len(guild.text_channels)}")
         
         # Seleccionar canal para mensaje de bienvenida
         ch = self._pick_welcome_channel(guild)
         
         if ch:
-            print(f"   Canal seleccionado para bienvenida: #{ch.name}")
+            log.info(f"   Canal seleccionado para bienvenida: #{ch.name}")
             await self._send_onboarding_message(ch, guild)
         else:
-            print(f"⚠️ No se encontró ningún canal con permisos de escritura en {guild.name}")
-            print(f"   El bot necesita permisos 'Send Messages' en al menos un canal.")
+            log.warning(f"⚠️ No se encontró ningún canal con permisos de escritura en {guild.name}")
+            log.info(f"   El bot necesita permisos 'Send Messages' en al menos un canal.")
     
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         """Enviado cuando el bot es expulsado de un servidor."""
-        print(f"🗑️ Bot removido del servidor: {guild.name} (ID: {guild.id})")
-        print(f"   📊 Datos históricos preservados en BD")
+        log.info(f"🗑️ Bot removido del servidor: {guild.name} (ID: {guild.id})")
+        log.info(f"   📊 Datos históricos preservados en BD")
     
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
@@ -157,7 +141,7 @@ class EventsCog(commands.Cog):
             pass
         else:
             # Log de otros errores
-            print(f"❌ Error en comando: {error}")
+            log.error(f"❌ Error en comando: {error}")
 
 # Setup function necesaria para cargar el cog
 async def setup(bot):

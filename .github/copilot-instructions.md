@@ -150,11 +150,12 @@ El fichero `todo.txt` es la **FUENTE ÚNICA DE VERDAD** para tareas, bugs y prog
 
 1. **ANTES de empezar:** Lee `todo.txt` completo
 2. **Implementa la tarea:** Código + tests si aplica
-3. **Verifica que funciona:** Compila sin errores, lógica correcta
-4. **Actualiza `todo.txt`:**
+3. **Añade traducciones:** Si el cambio afecta mensajes, actualiza `i18n.py`
+4. **Verifica que funciona:** Compila sin errores, lógica correcta
+5. **Actualiza `todo.txt`:**
    - Marca como `[x]` o elimina si completada
    - Añade detalles de implementación si son complejos
-5. **Nuevos bugs/ideas:** Añade al `todo.txt` inmediatamente
+6. **Nuevos bugs/ideas:** Añade al `todo.txt` inmediatamente
 
 #### **Formato de Tareas:**
 
