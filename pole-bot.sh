@@ -227,7 +227,7 @@ cmd_start() {
     # Iniciar bot en segundo plano
     print_info "Iniciando bot..."
     source "$VENV_DIR/bin/activate"
-    nohup python3 "$MAIN_FILE" > "$LOG_FILE" 2>&1 &
+    nohup python3 "$MAIN_FILE" > /dev/null 2>&1 &
     echo $! > "$PID_FILE"
     
     sleep 2
@@ -249,15 +249,37 @@ cmd_start() {
 # Detiene el bot
 ################################################################################
 
+# Función auxiliar para encontrar PID del bot
+find_bot_pid() {
+    # Primero intentar archivo PID
+    if [ -f "$PID_FILE" ]; then
+        local pid=$(cat "$PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+    
+    # Fallback: buscar proceso por nombre
+    local pid=$(pgrep -f "python.*main.py" | head -n1)
+    if [ -n "$pid" ]; then
+        echo "$pid"
+        return 0
+    fi
+    
+    return 1
+}
+
 cmd_stop() {
     print_header "Deteniendo Pole Bot"
     
-    if [ ! -f "$PID_FILE" ]; then
-        print_warning "El bot no está corriendo (no se encontró PID)"
+    PID=$(find_bot_pid)
+    
+    if [ -z "$PID" ]; then
+        print_warning "El bot no está corriendo (no se encontró proceso)"
+        rm -f "$PID_FILE" 2>/dev/null
         exit 0
     fi
-    
-    PID=$(cat "$PID_FILE")
     
     if kill -0 "$PID" 2>/dev/null; then
         print_info "Deteniendo bot (PID: $PID)..."
@@ -298,23 +320,21 @@ cmd_restart() {
 cmd_status() {
     print_header "Estado de Pole Bot"
     
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if kill -0 "$PID" 2>/dev/null; then
-            print_success "Bot corriendo (PID: $PID)"
-            
-            # Mostrar info del proceso
-            echo ""
-            print_info "Información del proceso:"
-            ps -p "$PID" -o pid,ppid,%cpu,%mem,etime,cmd --no-headers
-            
-            # Mostrar últimas líneas del log
+    PID=$(find_bot_pid)
+    
+    if [ -n "$PID" ]; then
+        print_success "Bot corriendo (PID: $PID)"
+        
+        # Mostrar info del proceso
+        echo ""
+        print_info "Información del proceso:"
+        ps -p "$PID" -o pid,ppid,%cpu,%mem,etime,cmd --no-headers
+        
+        # Mostrar últimas líneas del log
+        if [ -f "$LOG_FILE" ]; then
             echo ""
             print_info "Últimas líneas del log:"
             tail -n 10 "$LOG_FILE"
-        else
-            print_error "Bot detenido (PID obsoleto)"
-            rm -f "$PID_FILE"
         fi
     else
         print_warning "Bot detenido"
@@ -399,8 +419,8 @@ Environment="PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$VENV_DIR/bin/python3 $MAIN_FILE
 Restart=always
 RestartSec=10
-StandardOutput=append:$LOG_FILE
-StandardError=append:$LOG_FILE
+StandardOutput=journal
+StandardError=journal
 
 # Security
 NoNewPrivileges=true

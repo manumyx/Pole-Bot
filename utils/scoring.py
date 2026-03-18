@@ -2,7 +2,7 @@
 Sistema de Puntuación y Rachas (v1.0 - Hora Aleatoria + Seasons)
 Calcula puntos, multiplicadores, clasifica por retraso y gestiona rachas
 """
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Union
 from datetime import datetime
 
 # ==================== BADGES DE RANGO (EMOJIS CUSTOM) ====================
@@ -17,7 +17,7 @@ BADGE_RUBY = "<:badge_6:1440023135524094046>"      # Rubí
 # ==================== SISTEMA DE SEASONS ====================
 # Configuración de temporadas
 # Solo se define preseason explícitamente, las demás se generan dinámicamente
-SEASON_CONFIG = {
+SEASON_CONFIG: Dict[str, Dict[str, Union[str, bool]]] = {
     'preseason': {
         'name': 'Pre-Temporada',
         'start_date': '2025-01-01',  # Todo 2025 es preseason
@@ -26,7 +26,7 @@ SEASON_CONFIG = {
     }
 }
 
-def get_season_config(year: int) -> dict:
+def get_season_config(year: int) -> Dict[str, Union[str, bool]]:
     """
     Obtener configuración de una temporada por año
     2025 → preseason
@@ -85,7 +85,7 @@ POINTS_CONFIG = {
 
 # Cuotas por categoría: porcentaje de usuarios (sin bots) que pueden reclamar cada tipo
 # Ejemplo: servidor de 100 usuarios → crítico max 10, veloz max 30
-QUOTA_CONFIG = {
+QUOTA_CONFIG: Dict[str, Dict[str, Optional[Union[int, float]]]] = {
     'critical': {
         'max_minutes': 10,      # Solo disponible primeros 10 minutos
         'max_percentage': 0.10  # Solo 10% del servidor puede reclamarlo
@@ -185,9 +185,13 @@ def classify_delay(delay_minutes: int, is_next_day: bool = False) -> str:
         return 'critical'
     
     # Clasificar según límites de tiempo de QUOTA_CONFIG
-    if delay_minutes < QUOTA_CONFIG['critical']['max_minutes']:
+    critical_max = QUOTA_CONFIG['critical']['max_minutes']
+    fast_max = QUOTA_CONFIG['fast']['max_minutes']
+    
+    # Type narrowing: sabemos que critical y fast siempre tienen valores numéricos
+    if critical_max is not None and delay_minutes < critical_max:
         return 'critical'
-    if delay_minutes < QUOTA_CONFIG['fast']['max_minutes']:
+    if fast_max is not None and delay_minutes < fast_max:
         return 'fast'
     # Desde 3h hasta fin del día (00:00) es normal
     return 'normal'
@@ -210,32 +214,49 @@ def get_pole_emoji(pole_type: str) -> str:
     }
     return emojis.get(pole_type, '🏁')
 
-def get_pole_name(pole_type: str) -> str:
+def get_pole_name(pole_type: str, guild_id: Optional[int] = None) -> str:
     """
     Obtener el nombre legible del tipo de pole
     
     Args:
         pole_type: Tipo de pole
+        guild_id: ID del servidor (para traducción)
     
     Returns:
-        Nombre del tipo de pole
+        Nombre del tipo de pole traducido
     """
-    names = {
-        'critical': 'CRÍTICA',
-        'fast': 'VELOZ',
-        'normal': 'POLE',
-        'marranero': 'MARRANERO'
-    }
-    return names.get(pole_type, 'POLE')
+    # Importar aquí para evitar circular dependency
+    try:
+        from utils.i18n import t
+        names = {
+            'critical': t('pole.type.critical', guild_id),
+            'fast': t('pole.type.fast', guild_id),
+            'normal': t('pole.type.normal', guild_id),
+            'marranero': t('pole.type.marranero', guild_id)
+        }
+        return names.get(pole_type, t('pole.type.normal', guild_id))
+    except:
+        # Fallback si falla la importación
+        names = {
+            'critical': 'CRÍTICA',
+            'fast': 'VELOZ',
+            'normal': 'POLE',
+            'marranero': 'MARRANERO'
+        }
+        return names.get(pole_type, 'POLE')
 
-def check_quota_available(pole_type: str, current_count: int, total_members: int) -> Tuple[bool, int, Optional[int]]:
+def check_quota_available(pole_type: str, current_count: int, active_players: int) -> Tuple[bool, int, Optional[int]]:
     """
     Verificar si aún hay cuota disponible para este tipo de pole.
+    
+    IMPORTANTE: Se basa en JUGADORES ACTIVOS (usuarios que han hecho pole alguna vez)
+    NO en el total de miembros del servidor. Esto evita meta roto en servers grandes
+    con pocos jugadores activos.
     
     Args:
         pole_type: Tipo de pole (critical, fast, normal, marranero)
         current_count: Cantidad actual de poles de este tipo reclamados hoy
-        total_members: Total de miembros en el servidor (sin contar bots)
+        active_players: Total de jugadores activos en el servidor (han hecho pole alguna vez)
     
     Returns:
         Tupla (hay_cuota_disponible, current_count, max_allowed)
@@ -247,15 +268,16 @@ def check_quota_available(pole_type: str, current_count: int, total_members: int
     if max_percentage is None:
         return (True, current_count, None)
     
-    # Calcular máximo permitido
-    max_allowed = max(1, int(total_members * max_percentage))
+    # Calcular máximo permitido basándose en jugadores ACTIVOS
+    # Mínimo siempre 1 para evitar división por 0 o servers nuevos
+    max_allowed = max(1, int(active_players * max_percentage))
     
     # Verificar si aún hay cupo
     has_quota = current_count < max_allowed
     
     return (has_quota, current_count, max_allowed)
 
-def update_streak(last_pole_date: Optional[str], current_streak: int) -> Tuple[int, bool]:
+def update_streak(last_pole_date: Optional[str], current_streak: int, current_date: Optional[str] = None) -> Tuple[int, bool]:
     """
     Actualizar la racha del usuario
     
@@ -266,7 +288,8 @@ def update_streak(last_pole_date: Optional[str], current_streak: int) -> Tuple[i
     Returns:
         Tupla de (nueva_racha, racha_rota)
     """
-    today = datetime.now().strftime('%Y-%m-%d')
+    # Permitir override de la fecha efectiva del día a contabilizar (para marranero)
+    today = current_date or datetime.now().strftime('%Y-%m-%d')
     
     # Si no hay pole previo, empieza racha
     if not last_pole_date:
@@ -288,65 +311,59 @@ def update_streak(last_pole_date: Optional[str], current_streak: int) -> Tuple[i
     # Si fue hace más tiempo, se rompió la racha
     return 1, True
 
-def get_rank_info(total_points: float) -> Tuple[str, str]:
+def get_rank_info(total_points: float, guild_id: Optional[int] = None) -> Tuple[str, str]:
     """
     Obtener rango e emoji según puntos totales (Sistema de Seasons)
     
     Args:
         total_points: Puntos totales del usuario en la season actual
+        guild_id: ID del servidor (para traducción)
     
     Returns:
         Tupla de (badge_emoji, nombre_rango_completo)
     """
-    if total_points >= RANK_THRESHOLDS['ruby']:
-        return RANK_BADGES['ruby'], RANK_NAMES['ruby']
-    elif total_points >= RANK_THRESHOLDS['amethyst']:
-        return RANK_BADGES['amethyst'], RANK_NAMES['amethyst']
-    elif total_points >= RANK_THRESHOLDS['diamond']:
-        return RANK_BADGES['diamond'], RANK_NAMES['diamond']
-    elif total_points >= RANK_THRESHOLDS['gold']:
-        return RANK_BADGES['gold'], RANK_NAMES['gold']
-    elif total_points >= RANK_THRESHOLDS['silver']:
-        return RANK_BADGES['silver'], RANK_NAMES['silver']
-    else:
-        return RANK_BADGES['bronze'], RANK_NAMES['bronze']
+    # Importar aquí para evitar circular dependency
+    try:
+        from utils.i18n import t
+        
+        if total_points >= RANK_THRESHOLDS['ruby']:
+            return RANK_BADGES['ruby'], t('rank.ruby', guild_id)
+        elif total_points >= RANK_THRESHOLDS['amethyst']:
+            return RANK_BADGES['amethyst'], t('rank.amethyst', guild_id)
+        elif total_points >= RANK_THRESHOLDS['diamond']:
+            return RANK_BADGES['diamond'], t('rank.diamond', guild_id)
+        elif total_points >= RANK_THRESHOLDS['gold']:
+            return RANK_BADGES['gold'], t('rank.gold', guild_id)
+        elif total_points >= RANK_THRESHOLDS['silver']:
+            return RANK_BADGES['silver'], t('rank.silver', guild_id)
+        else:
+            return RANK_BADGES['bronze'], t('rank.bronze', guild_id)
+    except ImportError:
+        # Fallback si falla el import
+        if total_points >= RANK_THRESHOLDS['ruby']:
+            return RANK_BADGES['ruby'], RANK_NAMES['ruby']
+        elif total_points >= RANK_THRESHOLDS['amethyst']:
+            return RANK_BADGES['amethyst'], RANK_NAMES['amethyst']
+        elif total_points >= RANK_THRESHOLDS['diamond']:
+            return RANK_BADGES['diamond'], RANK_NAMES['diamond']
+        elif total_points >= RANK_THRESHOLDS['gold']:
+            return RANK_BADGES['gold'], RANK_NAMES['gold']
+        elif total_points >= RANK_THRESHOLDS['silver']:
+            return RANK_BADGES['silver'], RANK_NAMES['silver']
+        else:
+            return RANK_BADGES['bronze'], RANK_NAMES['bronze']
 
 def get_current_season(db_path: str = "data/pole_bot.db") -> str:
     """
-    Detectar la season actual
+    Detectar la season actual basándose en el AÑO ACTUAL
     
-    PRIORIDAD:
-    1. Consulta la base de datos (seasons.is_active = 1)
-    2. Si no hay temporada activa en BD, calcula por año
+    La temporada se determina por el año, NO por lo que esté en la BD.
+    Esto evita que una migración fallida bloquee el sistema.
     
     Returns:
         ID de la season actual ('preseason', 'season_1', 'season_2', etc.)
     """
-    import sqlite3
-    import os
-    
-    # Construir ruta absoluta si es relativa
-    if not os.path.isabs(db_path):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        db_path = os.path.join(project_root, db_path)
-    
-    # 1. Intentar leer desde base de datos (tiene prioridad)
-    if os.path.exists(db_path):
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT season_id FROM seasons WHERE is_active = 1 LIMIT 1')
-            row = cursor.fetchone()
-            conn.close()
-            
-            if row:
-                return row[0]  # Retornar temporada activa desde BD
-        except sqlite3.Error as e:
-            print(f"⚠️ Error leyendo temporada desde BD: {e}")
-            pass  # Si hay error, continuar con detección por año
-    
-    # 2. Fallback: calcular por año actual
+    # Calcular por año actual (SIEMPRE)
     year = datetime.now().year
     
     if year == 2025:
@@ -355,7 +372,7 @@ def get_current_season(db_path: str = "data/pole_bot.db") -> str:
         season_num = year - 2025  # 2026→1, 2027→2, ...
         return f'season_{season_num}'
 
-def get_season_info(season_id: Optional[str] = None) -> dict:
+def get_season_info(season_id: Optional[str] = None) -> Dict[str, Union[str, bool]]:
     """
     Obtener información de una season
     
@@ -382,7 +399,7 @@ def get_season_info(season_id: Optional[str] = None) -> dict:
             year = 2025 + season_num  # season_1→2026, season_2→2027
             return {
                 'id': season_id,
-                'name': f'Temporada {season_num}',
+                'name': f'Temporada {year}',
                 'start_date': f'{year}-01-01',
                 'end_date': f'{year}-12-31',
                 'is_ranked': True
@@ -390,11 +407,25 @@ def get_season_info(season_id: Optional[str] = None) -> dict:
         except (IndexError, ValueError):
             pass
     
-    # Fallback (no debería llegar aquí)
-    return {
-        'id': season_id,
-        'name': season_id.replace('_', ' ').title(),
-        'start_date': '2025-01-01',
-        'end_date': '2025-12-31',
-        'is_ranked': False
-    }
+    # Si es un año numérico (ej: "2026"), convertir a season_N
+    try:
+        year = int(season_id)
+        if year >= 2026:
+            season_num = year - 2025
+            return {
+                'id': f'season_{season_num}',
+                'name': f'Temporada {year}',
+                'start_date': f'{year}-01-01',
+                'end_date': f'{year}-12-31',
+                'is_ranked': True
+            }
+        elif year == 2025:
+            return get_season_info('preseason')
+    except (ValueError, TypeError):
+        pass
+    
+    # Fallback: Error en vez de devolver basura
+    raise ValueError(
+        f"❌ season_id inválido: '{season_id}'. "
+        f"Usa 'preseason', 'season_1', 'season_2', etc., o un año numérico (2026, 2027...)"
+    )

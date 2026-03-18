@@ -1,577 +1,109 @@
-POLE BOT - Proyecto v1.0
+# ====================================
+# TODO - POLE BOT
+# ====================================
 
-Bot de Discord que implementa un sistema de "pole position" diario con HORA ALEATORIA.
+## ✅ COMPLETADOS RECIENTEMENTE (histórico resumido)
 
-## 🎯 CONCEPTO v1.0
+### 25 febrero 2026
+- [x] RONDA 3: correcciones cross-midnight + generator drift
+  - Fix de fecha efectiva de pole cuando la notificación cruza medianoche
+  - Protección de reseteo de rachas en contexto cross-midnight
+  - Failsafe para forzar generador diario si no corrió a tiempo
+  - Comandos debug de restauración reforzados
 
-- **Sistema de hora aleatoria**: El bot genera una hora diferente cada día (configurable por servidor)
-- **Puntos por velocidad**: Los puntos se otorgan según cuánto tardas desde la apertura (no por orden)
-- **Notificación de apertura**: El bot avisa cuando se abre el pole
-- **Rachas progresivas**: Multiplicadores hasta 2.5x en 365 días
+### 20 febrero 2026
+- [x] Auditoría profunda: 5 bugs críticos interconectados
+  - Generador diario movido correctamente a medianoche
+  - Validación de freshness de notification_sent_at
+  - Corrección de clasificación post-medianoche (marranero)
+  - Protección contra reseteo de racha para usuarios que ya polearon hoy
+  - Corrección de degradación de cuotas sin consumir slots indebidamente
 
-## 🔥 ÚLTIMAS ACTUALIZACIONES (Diciembre 2024)
+### 16 febrero 2026
+- [x] Delay justo por hora real de notificación (schema v7)
+- [x] Anti race-condition: lock por usuario+guild+fecha para evitar poles duplicados
 
-### ✅ COMPLETADAS RECIENTEMENTE:
+### 15 febrero 2026
+- [x] Resumen de medianoche sin duplicados por usuario
 
-1. **Sistema de Strikes ELIMINADO** (Completo)
-   - ❌ Tabla `strikes` eliminada de BD
-   - ❌ Columnas `strikes`, `last_strike_date`, `suspension_until` eliminadas de `users`
-   - ❌ Lógica de strikes eliminada de pole.py
-   - ✅ Scripts de migración creados
-   - ✅ 14 archivos de documentación actualizados
-   - Ver: CHANGELOG_STRIKES_REMOVAL.md
+### 3 febrero 2026
+- [x] Variaciones aleatorias de mensajes (ES/EN) + fix de tiempo dinámico en notificaciones
 
-2. **Comando /stats → /profile** (Completo)
-   - ✅ Renombrado comando
-   - ✅ Corregido bug `best_streak` (era `max_streak`)
-   - ✅ Referencias actualizadas en docs
+### 1 febrero 2026
+- [x] Sistema i18n base implementado (ES/EN)
+  - Idioma por servidor
+  - Selector en settings
+  - Migración de base de datos
 
-3. **Eliminada Ventana de Apertura de Settings** (Completo)
-   - ✅ Opción eliminada del menú
-   - ✅ Clase RangeModal eliminada
-   - ✅ Campo eliminado del embed
+### 29 enero 2026
+- [x] Migración a rachas globales (global_users)
+- [x] Fix de watcher que reseteaba rachas inesperadamente tras lag
+- [x] Validación global de poles/marranero corregida
 
-4. **Sistema de Margen Mínimo entre Poles** (Completo)
-   - ✅ Constante MIN_HOURS_BETWEEN_POLES = 4 horas
-   - ✅ Validación con 100 intentos
-   - ✅ Protege rachas evitando poles muy cercanos
+### 15 enero 2026
+- [x] Bug marranero resuelto (ventana correcta basada en apertura real)
 
-5. **Resumen Cambiado a Medianoche** (Completo)
-   - ✅ Task ejecuta a las 00:00-00:15 (antes 12:00)
-   - ✅ Muestra poles del día ANTERIOR
-   - ✅ Muestra rachas perdidas
-   - ✅ Anuncia nuevo día
+### 2 enero 2026
+- [x] Crisis migración de Año Nuevo resuelta
+  - Corrección de detección de temporada por año
+  - Reparación de temporada corrupta y recuperación de stats
+  - Nuevo comando de recuperación de estado de temporada
 
-6. **Refactorización: Totales Calculados Dinámicamente** (✅ COMPLETO)
-   - ✅ Columnas `total_points` y `total_poles` eliminadas de tabla `users`
-   - ✅ Totales ahora: SUM(season_stats.season_points/season_poles)
-   - ✅ Funciones actualizadas: get_user(), get_leaderboard(), get_global_leaderboard()
-   - ✅ Server leaderboards actualizados con JOIN
-   - ✅ Eliminadas actualizaciones redundantes en pole.py
-   - ✅ Comandos debug actualizados (/addpoints, /fakepole)
-   - ✅ Scripts de testing actualizados
-   - ✅ Script de migración creado: migrate_remove_total_columns.py
-   - ✅ Índice idx_users_points eliminado
-   - Ver: CHANGELOG_REMOVE_TOTALS.md
-   - **IMPORTANTE:** Ejecutar script de migración en BDs existentes
-
----
-
-## 📊 ESTADO ACTUAL - v1.0 EN DESARROLLO
-
-### ✅ LO QUE YA ESTÁ HECHO
-
-**Documentación Completa:**
-- ✅ docs/DESIGN.md - Diseño completo del sistema de hora aleatoria
-- ✅ docs/SCORING.md - Sistema de puntos por velocidad de respuesta
-- ✅ docs/RULES.md - Reglas actualizadas con hora variable
-- ✅ README.md - Documentación principal actualizada
-
-**Backend Funcional (Sistema Antiguo - Temporal):**
-- ✅ Base de datos SQLite (producción + debug separados)
-- ✅ Detección de "pole" (case insensitive, palabra exacta)
-- ✅ Sistema de puntos básico (20/11/10/8)
-- ✅ Sistema de rachas (1.0x → 2.5x hasta 365 días)
-
-- ✅ Separación debug/producción completa
-
-**Comandos Implementados:**
-- ✅ `/profile` - Estadísticas individuales (renombrado de /stats)
-- ✅ `/leaderboard` - Top 10 del servidor
-- ✅ `/settings` - Comando único con interfaz interactiva
-- ✅ `/debug` completo - Testing sin afectar producción
-
-**IMPORTANTE:** El código actual usa sistema temporal (pole fijo 12h, orden de llegada). 
-Debe actualizarse para implementar hora aleatoria y puntos por retraso.
+### Infraestructura y robustez (completado)
+- [x] Versionado de schema y migraciones centralizadas
+- [x] Foreign keys activadas
+- [x] Health checks y utilidades de diagnóstico
+- [x] Limpieza automática de servidores al ser expulsado el bot
+- [x] Mejoras de status y coherencia operativa
 
 ---
 
-## 📋 TAREAS PENDIENTES PARA v1.0
+## 🚨 CRÍTICOS ABIERTOS (hacer YA)
 
-### FASE 1: Documentación (COMPLETADA ✅)
-- ✅ Diseño conceptual completo
-- ✅ DESIGN.md, SCORING.md, RULES.md actualizados
-- ✅ README.md actualizado
-- ⏳ Actualizar COMMANDS.md con comandos nuevos (/predict, /history)
-- ⏳ Actualizar NOTIFICATIONS.md con mensajes de apertura
-- ⏳ Actualizar ACHIEVEMENTS.md para sistema de velocidad
-
-### FASE 2: Base de Datos (SIGUIENTE)
-- ⏳ Añadir `daily_pole_time` (TIME) en tabla servers
-- ⏳ Añadir `pole_range_start` (INT) en servers (default: 8)
-- ⏳ Añadir `pole_range_end` (INT) en servers (default: 20)
-- ⏳ Añadir `notify_opening` (BOOL) en servers (default: 1)
-- ⏳ Añadir `opening_time` (DATETIME) en tabla poles
-- ⏳ Añadir `user_time` (DATETIME) en tabla poles
-- ⏳ Añadir `delay_minutes` (INT) en tabla poles
-- ⏳ Script de migración para actualizar schema
-
-### FASE 3: Lógica Core
-- ⏳ Crear tarea programada 00:00 → Generar hora aleatoria del día
-- ⏳ Crear tarea programada variable → Notificación de apertura
-- ⏳ Actualizar `on_message` en pole.py:
-  - Calcular delay desde opening_time
-  - Determinar categoría por delay (no por orden)
-  - Guardar opening_time, user_time, delay_minutes
-- ⏳ Actualizar función `calculate_points()`:
-  - Eliminar lógica de 1º/2º/3º
-  - Implementar lógica por franjas de tiempo
-- ⏳ Actualizar función `determine_pole_type()`:
-  - Cambiar de orden a delay en minutos
-
-### FASE 4: Comandos Nuevos/Actualizados
-- ⏳ Crear `/predict` - Mostrar rango de horas posibles mañana
-- ⏳ Crear `/history` - Mostrar historial de horas de apertura
-- ⏳ Actualizar `/settings`:
-  - Añadir opción "Rango de Horas" (pole_range_start/end)
-  - Añadir opción "Notificación Apertura" (notify_opening)
-- ⏳ Actualizar `/stats`:
-  - Añadir retraso promedio
-  - Añadir mejor tiempo registrado
-  - Añadir distribución por categorías (Crítico/Veloz/Normal/etc)
-- ⏳ Actualizar `/leaderboard`:
-  - Añadir opción ordenar por velocidad promedio
-
-### FASE 5: Testing
-- ⏳ Testing generación hora aleatoria (verificar rango)
-- ⏳ Testing notificación apertura (timing correcto)
-- ⏳ Testing cálculo puntos por delay
-- ⏳ Testing comandos /predict y /history
-- ⏳ Testing configuración rango horario
-- ⏳ Ajustar balance de puntos según feedback
-- ⏳ Verificar sistema de rachas funciona correctamente
-
-### FASE 6: Deploy Inicial
-- ⏳ Empaquetar con git archive
-- ⏳ Copiar a servidor (scp a manumyx@192.168.1.102)
-- ⏳ Configurar venv en servidor
-- ⏳ Configurar .env con token y settings
-- ⏳ Configurar systemd para auto-start
-- ⏳ Testing en producción
-- ⏳ Monitoreo primeros días
-
-### FASE 7: Post-Lanzamiento
-- ⏳ Implementar sistema de logros completo
-- ⏳ Crear comando `/achievements`
-- ⏳ Recopilar feedback de usuarios
-- ⏳ Ajustes basados en uso real
+- [ ] Bugs sin identificar
 
 ---
 
-## 🎯 SIGUIENTE ACCIÓN INMEDIATA
+## 🔧 PENDIENTES ACTIVOS (próximo sprint)
 
-**Comenzar FASE 2: Migración de Base de Datos**
+- [ ] Checklist operativo para 31 diciembre 2026 (migración 2026 -> 2027)
+  - Bot online desde 23:00
+  - Sin reinicios entre 23:00 y 00:05
+  - Monitor de logs de migración + verificación de POLE REWIND
+  - Backup manual previo y plan B con comando debug
 
-1. Actualizar `utils/database.py` para añadir nuevos campos
-2. Crear script de migración `scripts/migrate_to_v1.py`
-3. Testing de migración en base de datos de desarrollo
-4. Validar que queries existentes siguen funcionando
+- [ ] Mejorar onboarding al añadir bot a servidor
+  - Mensaje más claro y con más carisma
+  - Paso a paso corto: settings, canal, rango, ping, reglas
+  - Revisar copy final en cogs/events.py
 
-Después de completar BD → Pasar a FASE 3 (Lógica Core)
+- [ ] Cerrar cobertura i18n al 100%
+  - Auditoría de strings hardcodeados pendientes
+  - Completar claves faltantes ES/EN donde aplique producto final
 
----
-
-*Proyecto Pole Bot v1.0 - Primera versión con sistema de hora aleatoria*
-*Estado: Documentación completa, implementación pendiente*
-*Última actualización: 2025-11-17*
-
----
-
-## 🔥 GRAN REESTRUCTURACIÓN v3.0 - SISTEMA DE HORA ALEATORIA
-
-### ⚡ CONCEPTO NUEVO: POLE A HORA ALEATORIA
-
-**Cambio fundamental:** El pole YA NO será a las 12:00h fijas cada día. En su lugar:
-
-1. **Hora aleatoria diaria**: Cada día, el bot elige una hora aleatoria entre 08:00 y 20:00 (configurable por servidor)
-2. **Notificación de apertura**: A esa hora, el bot anuncia en el canal configurado: "🔔 ¡Pole abierto! Escribe 'pole' ahora"
-3. **Ventanas de tiempo**: Los puntos se otorgan según cuántas HORAS tardas desde la apertura
-
-### 📊 NUEVO SISTEMA DE PUNTOS POR RETRASO
-
-En lugar de "primero/segundo/marranero", ahora es por TIEMPO DE RETRASO:
-
-| Retraso desde apertura | Categoría | Puntos Base | Emoji |
-|------------------------|-----------|-------------|-------|
-| 0-15 minutos | **Crítico** 💎 | 20 pts | Rápido como el rayo |
-| 15 min - 1 hora | **Veloz** ⚡ | 15 pts | Bien atento |
-| 1-3 horas | **Normal** 🏁 | 10 pts | Participación estándar |
-| 3-6 horas | **Tardío** 🐢 | 7 pts | Llegas tarde |
-| 6+ horas | **Marranero** 🐷 | 5 pts | Casi ni te enteras |
-
-### 🎯 MANTIENE LO BUENO DEL SISTEMA ANTERIOR
-
-- ✅ Sistema de rachas (1-365 días, multiplicador hasta 2.5x)
-- ✅ Todos pueden ganar cada día (no competitivo)
-
-- ✅ Rangos y logros
-- ✅ Protección anti-lose/lose (20% conservado)
-
-### 🆕 NUEVAS CARACTERÍSTICAS
-
-1. **Variabilidad**: Cada día es diferente, no hay monotonía
-2. **Notificaciones opcionales**: Rol ping cuando se abre el pole
-3. **Predicción**: Comando `/predict` para ver rango de horas posibles del día siguiente
-4. **Historial**: `/history` muestra las últimas horas de apertura
-5. **Configuración flexible**: Admins pueden configurar el rango de horas (ej: 10:00-18:00, o 08:00-23:00)
-
-### ⚙️ IMPLICACIONES TÉCNICAS (para implementación futura)
-
-**Base de datos:**
-- Añadir campo `daily_pole_time` en tabla `servers` (hora aleatoria del día actual)
-- Añadir campo `pole_time_range_start` y `pole_time_range_end` (rango configurable)
-- Guardar timestamp exacto de cuando cada usuario hace pole
-
-**Lógica nueva:**
-- Tarea programada que cada día a las 00:00 genera hora aleatoria
-- Tarea programada que a la hora generada envía notificación
-- Cálculo de puntos basado en diferencia de tiempo (no en orden de llegada)
-
-**Comandos a actualizar:**
-- `/settings` → añadir configuración de rango horario
-- `/stats` → mostrar promedio de retraso del usuario
-- `/leaderboard` → puede ordenar por "más rápido en promedio"
+- [ ] Ajuste visual menor de mensajes (emojis/consistencia)
+  - Revisión de iconografía de puntos y bloques informativos
 
 ---
 
-## ✅ ESTADO ACTUAL DEL PROYECTO (lo que YA está hecho)
+## 🔮 FUTURO (nice to have)
 
-### Implementado y Funcional:
-- ✅ Base de datos SQLite con tablas separadas (producción + debug)
-- ✅ Sistema de detección de "pole" (case insensitive, palabra exacta)
-- ✅ Sistema de puntos base: Crítica (20), Secundón (11), Normal (10), Marranero (8)
-- ✅ Sistema de rachas con multiplicadores progresivos (1.0x → 2.5x hasta 365 días)
-
-- ✅ Comando `/settings` unificado con interfaz interactiva (selects + modals)
-- ✅ Comando `/stats` para ver estadísticas individuales
-- ✅ Comando `/leaderboard` con top 10 del servidor
-- ✅ Comando `/debug` completo para testing sin afectar producción
-  - `/debug simulate_pole` - Simular poles
-  - `/debug stats` - Ver stats debug
-  - `/debug leaderboard` - Ver ranking debug
-  - `/debug clear` - Limpiar datos debug
-  - `/debug grant` - Otorgar logros manualmente
-  - `/debug welcome` - Probar mensaje de bienvenida
-- ✅ Sistema de onboarding al unirse a servidor
-- ✅ Bloqueo de primer día (no se puede hacer pole hasta el día siguiente)
-- ✅ Separación completa de datos debug vs producción
-- ✅ Notificaciones configurables (reset y ganador)
-- ✅ Configuración de rol de ping opcional
-- ✅ Hora de reset configurable por servidor
-
-### Documentación Actual:
-- ✅ docs/DESIGN.md - Diseño completo del sistema (sistema viejo fijo 12h)
-- ✅ docs/SCORING.md - Sistema de puntos y rachas (sistema viejo)
-- ✅ docs/RULES.md - Reglas del juego (sistema viejo)
-- ✅ docs/COMMANDS.md - Lista de comandos disponibles
-- ✅ docs/ACHIEVEMENTS.md - Sistema de logros (pendiente implementar)
-- ✅ docs/NOTIFICATIONS.md - Sistema de notificaciones
-- ✅ README.md - Documentación principal
+- [ ] Métricas internas de fiabilidad (tiempos de notificación, retrasos, incidencias)
+- [ ] Dashboard de salud operativa para debug/admin
 
 ---
 
-## 📋 PRÓXIMAS TAREAS (en orden de prioridad)
+## 🧭 REGLAS DE MANTENIMIENTO DEL TODO
 
-### FASE 1: Rediseño Documental (ACTUAL)
-- [ ] **Reescribir docs/DESIGN.md** → Sistema de hora aleatoria
-- [ ] **Reescribir docs/SCORING.md** → Puntos por retraso en horas
-- [ ] **Reescribir docs/RULES.md** → Nuevas reglas con hora variable
-- [ ] **Actualizar README.md** → Reflejar nuevo concepto
-- [ ] **Actualizar docs/NOTIFICATIONS.md** → Notificación de apertura diaria
-
-**IMPORTANTE: NO TOCAR CÓDIGO EN ESTA FASE. SOLO DOCUMENTACIÓN.**
-
-### FASE 2: Implementación del Sistema Nuevo
-- [ ] Migrar base de datos (añadir campos necesarios)
-- [ ] Implementar generación de hora aleatoria diaria
-- [ ] Actualizar lógica de detección de pole (cálculo por tiempo de retraso)
-- [ ] Crear tarea programada para notificación de apertura
-- [ ] Actualizar comando `/settings` para configurar rango horario
-- [ ] Añadir comando `/predict` para ver rango de mañana
-- [ ] Añadir comando `/history` para ver historial de horas
-- [ ] Actualizar `/stats` para mostrar promedio de retraso
-
-### FASE 3: Testing y Ajustes
-- [ ] Testing extensivo en servidor de desarrollo
-- [ ] Ajustar balance de puntos según feedback
-- [ ] Verificar compatibilidad con datos existentes
-- [ ] Migración de datos de usuarios actuales (si aplica)
-
-### FASE 4: Características Futuras (Post-lanzamiento)
-- [ ] Sistema de logros completo
-- [ ] Comando `/achievements`
-- [ ] Dashboard web opcional
-- [ ] Sistema de eventos especiales
-- [ ] Rivalidades entre usuarios
-- [ ] Predicciones colaborativas
+- [x] Mantener esta estructura fija: Completados, Críticos, Pendientes, Futuro.
+- [x] No mezclar histórico largo con tareas activas.
+- [x] Evitar duplicados: una tarea solo en una sección.
+- [x] Si una tarea se completa, moverla a Completados y marcar fecha.
+- [x] Si una tarea cambia de alcance, reescribirla (no acumular texto viejo debajo).
 
 ---
 
-## 🎨 REFINAMIENTO COMPLETO - v2.0 CON ESENCIA (SISTEMA ANTIGUO - PARA REFERENCIA)
+## 📌 NOTA
 
-✅ **DISEÑO COMPLETADO** - Ver DESIGN.md para detalles completos
-
-### Mejoras Clave Implementadas (Sistema Viejo):
-1. Sistema de Pole Crítica (20 pts) vs Normal (10 pts) vs Marranero (8 pts)
-2. Ventana de tiempo clarificada: primeros 30 minutos después de las 12h
-3. Protección contra intentos anticipados y multi-servidor
-4. Balance anti-lose/lose: conservas 20% al perder racha
-5. Rachas máximo 365 días (objetivo épico pero alcanzable)
-6. Sistema de rangos con emojis personalizados del bot
-7. Slash commands modernos (/leaderboard, /settings, etc.)
-8. Personalidad y humor en todos los mensajes del bot
-9. Sistema de representación de servidor para rankings globales
-10. Eventos especiales, rivalidades, predicciones, etc.
-
----
-
-## 📊 RESUMEN EJECUTIVO - ESTADO DEL PROYECTO
-
-### ✅ LO QUE YA ESTÁ HECHO (v2.0 - Sistema Actual)
-
-**Backend Completo:**
-- ✅ Base de datos SQLite con tablas separadas (producción + debug)
-- ✅ Sistema de detección de "pole" (case insensitive, palabra exacta)
-- ✅ Sistema de puntos: Crítica (20), Secundón (11), Normal (10), Marranero (8)
-- ✅ Sistema de rachas con multiplicadores (1.0x → 2.5x hasta 365 días)
-
-- ✅ Bloqueo primer día (no poles hasta día siguiente)
-- ✅ Separación completa debug/producción
-
-**Comandos Funcionando:**
-- ✅ `/stats` - Estadísticas individuales
-- ✅ `/leaderboard` - Top 10 del servidor
-- ✅ `/settings` - Comando único con interfaz interactiva (selects + modals)
-- ✅ `/debug` completo - Testing sin afectar producción
-  - simulate_pole, stats, leaderboard, clear, grant, welcome
-
-**Sistema de Configuración:**
-- ✅ Canal de pole configurable
-- ✅ Hora de reset configurable
-- ✅ Rol de ping opcional
-- ✅ Notificaciones toggle (reset + ganador)
-- ✅ Mensaje de onboarding al unirse a servidor
-
-### 🔥 LO QUE VIENE (v3.0 - Sistema de Hora Aleatoria)
-
-**Cambio Conceptual:**
-- ❌ Pole fijo a las 12:00h → ✅ Pole a hora ALEATORIA cada día
-- ❌ Puntos por orden (1º, 2º, 3º) → ✅ Puntos por TIEMPO DE RETRASO
-- ❌ Monotonía → ✅ Variabilidad e imprevisibilidad
-
-**Documentación Nueva Creada:**
-- ✅ docs/DESIGN_V3_RANDOM.md - Diseño completo sistema hora aleatoria
-- ✅ docs/SCORING_V3_RANDOM.md - Puntos por velocidad de respuesta
-- ✅ docs/RULES_V3_RANDOM.md - Reglas actualizadas
-- ✅ README.md actualizado con v3.0
-
-**Puntos por Retraso:**
-- 💎 Crítico (0-15min): 20 pts
-- ⚡ Veloz (15min-1h): 15 pts
-- 🏁 Normal (1-3h): 10 pts
-- 🐢 Tardío (3-6h): 7 pts
-- 🐷 Marranero (6+h): 5 pts
-
-**Nuevas Características v3.0:**
-1. Generación diaria de hora aleatoria (00:00)
-2. Notificación de apertura con rol ping
-3. Rango horario configurable por servidor (ej: 08:00-20:00)
-4. Comando `/predict` - Ver rango de horas mañana
-5. Comando `/history` - Ver historial de aperturas
-6. Nuevas estadísticas: retraso promedio, mejor tiempo, distribución
-
-### 📋 TAREAS PENDIENTES (En orden)
-
-**FASE 1: Documentación (COMPLETADA)**
-- ✅ Diseño conceptual v3.0
-- ✅ Reescribir DESIGN, SCORING, RULES
-- ✅ Actualizar README
-- ⏳ Actualizar COMMANDS.md
-- ⏳ Actualizar NOTIFICATIONS.md
-- ⏳ Actualizar ACHIEVEMENTS.md
-
-**FASE 2: Base de Datos**
-- ⏳ Añadir campo `daily_pole_time` en tabla servers
-- ⏳ Añadir campos `pole_range_start` y `pole_range_end` en servers
-- ⏳ Añadir campo `notify_opening` en servers
-- ⏳ Añadir campos en tabla poles: `opening_time`, `user_time`, `delay_minutes`
-- ⏳ Script de migración para datos existentes
-
-**FASE 3: Lógica Core**
-- ⏳ Tarea programada 00:00 → Generar hora aleatoria
-- ⏳ Tarea programada variable → Notificación de apertura
-- ⏳ Actualizar `on_message` para calcular puntos por retraso
-- ⏳ Actualizar función `calculate_points()` con nueva lógica
-- ⏳ Actualizar detección de tipos de pole (ya no por orden)
-
-**FASE 4: Comandos Nuevos/Actualizados**
-- ⏳ Crear `/predict` - Rango de horas mañana
-- ⏳ Crear `/history` - Historial aperturas
-- ⏳ Actualizar `/settings` - Añadir configuración rango horario
-- ⏳ Actualizar `/stats` - Añadir retraso promedio, mejor tiempo
-- ⏳ Actualizar `/leaderboard` - Añadir ordenamiento por velocidad
-
-**FASE 5: Testing**
-- ⏳ Testing en servidor de desarrollo
-- ⏳ Ajustar balance de puntos según feedback
-- ⏳ Verificar compatibilidad con datos existentes
-- ⏳ Testing de notificaciones de apertura
-- ⏳ Testing de comandos nuevos
-
-**FASE 6: Deploy**
-- ⏳ Migración de datos de usuarios actuales
-- ⏳ Deploy a servidor de producción (manumyx@192.168.1.102)
-- ⏳ Configurar servicio systemd
-- ⏳ Monitoreo y ajustes post-lanzamiento
-
-### 🎯 SIGUIENTE ACCIÓN INMEDIATA
-
-**NO TOCAR CÓDIGO AÚN**. Primero:
-1. Revisar documentación nueva (DESIGN_V3, SCORING_V3, RULES_V3)
-2. Validar que el concepto es el deseado
-3. Confirmar rangos de puntos (20/15/10/7/5)
-4. Confirmar rangos de tiempo (15min, 1h, 3h, 6h)
-5. Decidir si mantener rangos actuales o ajustar
-
-**Después de validación:** Comenzar FASE 2 (Base de datos)
-
----
-
-*Proyecto Pole Bot - Estado actualizado: 2025-11-17*
-*Versión actual: v2.0 (producción)*
-*Versión en diseño: v3.0 (hora aleatoria)*
-
----
-
-## 🎨 REFINAMIENTO COMPLETO - v2.0 CON ESENCIA
-
-✅ **DISEÑO COMPLETADO** - Ver DESIGN.md para detalles completos
-
-### Mejoras Clave Implementadas:
-1. Sistema de Pole Crítica (25 pts) vs Normal (10 pts) vs Tardía (0 pts)
-2. Ventana de tiempo clarificada: primeros 30 minutos después de las 12h
-3. Protección contra intentos anticipados y multi-servidor
-4. Balance anti-lose/lose: conservas 20% al perder racha
-5. Rachas máximo 365 días (objetivo épico pero alcanzable)
-6. Sistema de rangos con emojis personalizados del bot
-7. Slash commands modernos (/leaderboard, /config, etc.)
-8. Personalidad y humor en todos los mensajes del bot
-9. Sistema de representación de servidor para rankings globales
-10. Eventos especiales, rivalidades, predicciones, etc.
-
-### Ideas Pendientes para Futuro:
-- Dashboard web opcional (Fase 4)
-- Sistema de equipos temporales
-- Más easter eggs y logros ocultos
-- Integración con otros bots de Discord
-- API pública para estadísticas
-- Modo torneo para competencias organizadas
-- Sistema de apuestas con puntos (jugar puntos en quién ganará)
-- Predicciones colaborativas (la comunidad vota quién ganará)
-- Cartas especiales/power-ups (freeze racha, doble puntos, etc.)
-- Misiones diarias/semanales para puntos extra
-- Sistema de trading de badges entre usuarios
-- Pole "privados" en hilos/threads específicos
-- Notificaciones push personalizadas fuera de Discord
-- Integración con Twitch para streamers
-- Sistema de mentores/aprendices
-- Logros colaborativos (todos en el servidor deben hacer pole 7 días seguidos)
-
-### Próximo Paso: IMPLEMENTACIÓN
-**Fase 1 (MVP):** Empezar con lo esencial funcional
-- Detección exacta de "pole"
-- Sistema de puntos balanceado
-- Rachas con protección anti-lose/lose
-- Warnings con reacciones
-- Notificaciones básicas
-
----
-
-*Diseño con ESENCIA completado. Ready to code.* 🚀
-
----
-
-## ✅ v2.1 Rework PENDIENTE (Puntos y Rachas)
-
-Decisiones a confirmar:
-- [ ] Ventana 00:00–08:00: ¿Se trata como Normal (10 pts) o creamos categoría "Madrugador" con otros puntos?
-- [ ] Redondeo de puntos con multiplicadores: ¿floor, ceil o banker's rounding?
-- [ ] Curva de racha hasta 2.5x: elegir Opción A (lineal), B (hitos) o C (suave).
-
-Tareas:
-- [ ] Actualizar lógica en `cogs/pole.py` con nuevas ventanas: Normal (08:00–12:00), Marranero (>=12:00), Crítico 2.0x
-- [ ] Añadir contador de "marraneros" en DB (`utils/database.py`)
-- [ ] Implementar multiplicador de racha con tope 2.5x (según opción elegida)
-- [ ] Exponer `/leaderboard` mostrando separador de marraneros vs normales
-- [ ] Añadir `/achievements` y pop-up embed al desbloquear
-- [ ] Crear `docs/ACHIEVEMENTS.md` (tras validar la lista)
-
----
-
-## 🔔 Configuración de Ping de Apertura (Nuevo Requisito v1.0)
-
-Objetivo: permitir configurar qué rol se menciona cuando se abre el pole diario.
-
-Estados posibles:
-- `none` (no se menciona nada)
-- `role:<id>` (rol específico configurado)
-- `everyone` (usa @everyone, requiere confirmación)
-
-Flujo @everyone:
-1. Admin ejecuta `/poleping set everyone`
-2. Bot responde con advertencia: "¿Seguro? Puede ser spam." y requiere `/poleping confirm` dentro de 60s.
-3. Si confirma, se guarda.
-4. Si no, se cancela.
-
-Comandos plan:
-- `/poleping set <@rol|everyone|none>`
-- `/poleping show` (muestra configuración actual)
-- Integrar alternativa en `/config` con botón "Editar Ping".
-
-Persistencia:
-- Campo nuevo en configuración de servidor: `ping_mode` (none|role|everyone)
-- Campo `ping_role_id` (nullable)
-
-Pendiente:
-- [ ] Añadir sección técnica en DESIGN.md (hecha)
-- [ ] Implementar almacenamiento en `utils/database.py`
-- [ ] Crear comandos en `cogs/config.py` o nuevo `cogs/ping.py`
-- [ ] Añadir advertencia/confirmación para @everyone
-- [ ] Actualizar lógica de notificación (reset) para usar configuración
-- [ ] Añadir tests básicos de flujo (opcional más adelante)
-
----
-
-## 🏆 Logros por Puntos Totales (Milestones) - Implementación
-
-Lista acordada (puede escalar si se adopta ×10):
-- 10   → El Comienzo
-- 100  → Persistente
-- 1,000 → Umbral Experto
-- 10,000 → Camino del Maestro
-- 100,000 → Maestro del Pole
-- 1,000,000 → Ascenso Divino
-- 10,000,000 → Nuevo Dios
-- 100,000,000 → Entidad Superior
-
-Tareas:
-- [ ] Definir estructura de logros en código (ID, nombre, puntos requeridos)
-- [ ] Agregar detección automática tras actualizar puntos
-- [ ] Registrar fecha de obtención
-- [ ] Mostrar rareza dinámica (calcular % jugadores que lo tienen)
-- [ ] Integrar en `/achievements` y `/profile`
-
----
-
-## ⚙️ Escala de Puntos (Decisión Pendiente)
-
-Elegir Opción B (×10) o C (×100) para evitar decimales.
-
-Tareas condicionadas:
-- [ ] Si se elige ×10: actualizar bases (20→200, 11→110, 10→100, 7→70) en DESIGN.md y ejemplos
-- [ ] Ajustar acumuladores y cálculo de racha (mantiene 0.1x escalones sin decimales)
-- [ ] Revisar logros por puntos si necesitan reinterpretación visual
-- [ ] Añadir toggle de vista compacta vs precisa en `/leaderboard`
-
--COMPROBAR LO SIGUIENTE-
-- Al hacer la migración, mantener las rachas, con sus respectivos multiplicadores.
+Este archivo queda como fuente única de verdad operativa.
+Si aparece una incidencia grande, se documenta en Completados con resumen claro y luego se mantiene el detalle técnico en código/logs/docs, no en bloques interminables dentro del TODO.
