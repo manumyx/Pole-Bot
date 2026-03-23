@@ -1,10 +1,13 @@
-# Pole Bot
-
+# Pole Bot 
 [![Discord](https://img.shields.io/badge/Discord-Bot-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com)
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 Bot de Discord para competiciones diarias de pole: hora aleatoria, puntos por velocidad, rachas globales y temporadas anuales.
+
+## Invitar al bot
+
+[![Invitar al Bot](https://img.shields.io/badge/Invitar_al_Bot-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1439710236876472482&permissions=277025770560&scope=bot%20applications.commands)
 
 ## Que hace
 
