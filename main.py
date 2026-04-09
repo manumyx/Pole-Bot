@@ -9,6 +9,10 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from utils.database import Database
 
 # Cargar variables de entorno
 load_dotenv()
@@ -91,13 +95,17 @@ class PoleBot(commands.Bot):
         # Logger
         self.log = logging.getLogger('PoleBot')
         
-        # Instancia única de Database para todo el bot
-        from utils.database import Database
-        self._db = Database()
-        self.log.info("Base de datos inicializada correctamente")
+        # Se inicializa en setup_hook con await db.initialize()
+        self._db: Optional["Database"] = None
     
     async def setup_hook(self):
         """Se ejecuta antes de que el bot se conecte a Discord"""
+        # Inicializar base de datos de forma async
+        from utils.database import Database
+        self._db = Database()
+        await self._db.initialize()
+        self.log.info("Base de datos inicializada correctamente")
+
         # Cargar todos los cogs (extensiones)
         self.log.info("Cargando extensiones (cogs)...")
         
@@ -150,7 +158,10 @@ class PoleBot(commands.Bot):
         """Actualizar el status del bot con el conteo de usuarios activos que han hecho pole"""
         try:
             # Usar instancia compartida en lugar de crear una nueva
-            active_users = self._db.get_total_active_users()
+            if self._db is None:
+                raise RuntimeError("Base de datos no inicializada")
+
+            active_users = await self._db.get_total_active_users()
             self.log.debug(f"Actualizando presencia: {active_users} jugadores activos")
         except Exception as e:
             self.log.warning(f"Error obteniendo usuarios activos para status: {e}")

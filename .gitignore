@@ -22,5 +22,9 @@ ENV/
 *.swp
 *.swo
 
-scripts/
+scripts/*
+!scripts/check_missing_translations.py
+!scripts/check_placeholders.py
+!scripts/migrate_seasons.py
+!scripts/restore_streaks.py
 .venv/

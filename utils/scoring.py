@@ -5,6 +5,13 @@ Calcula puntos, multiplicadores, clasifica por retraso y gestiona rachas
 from typing import Tuple, Optional, Dict, Union
 from datetime import datetime
 
+try:
+    from zoneinfo import ZoneInfo
+    LOCAL_TZ = ZoneInfo('Europe/Madrid')
+except Exception:
+    from datetime import timezone, timedelta
+    LOCAL_TZ = timezone(timedelta(hours=1))
+
 # ==================== BADGES DE RANGO (EMOJIS CUSTOM) ====================
 # Ajuste: se invirtieron Rubí y Bronce para que coincidan con el arte real
 BADGE_BRONZE = "<:badge_1:1440023143283429456>"    # Bronce
@@ -289,7 +296,7 @@ def update_streak(last_pole_date: Optional[str], current_streak: int, current_da
         Tupla de (nueva_racha, racha_rota)
     """
     # Permitir override de la fecha efectiva del día a contabilizar (para marranero)
-    today = current_date or datetime.now().strftime('%Y-%m-%d')
+    today = current_date or datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
     
     # Si no hay pole previo, empieza racha
     if not last_pole_date:
@@ -364,7 +371,7 @@ def get_current_season(db_path: str = "data/pole_bot.db") -> str:
         ID de la season actual ('preseason', 'season_1', 'season_2', etc.)
     """
     # Calcular por año actual (SIEMPRE)
-    year = datetime.now().year
+    year = datetime.now(LOCAL_TZ).year
     
     if year == 2025:
         return 'preseason'

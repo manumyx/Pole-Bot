@@ -110,5 +110,52 @@ El bot gestiona la migracion de temporada automaticamente. En caso de incidencia
 - `scripts/check_missing_translations.py`
 - `scripts/check_placeholders.py`
 - `scripts/migrate_seasons.py`
+- `scripts/restore_streaks.py`
 
 Si ves referencias a `verify_db.py`, `initialize_seasons.py`, `db_health_check.py` o `populate_test_data.py`, estan desactualizadas y no forman parte del repo actual.
+
+## Restaurar rachas (sin tocar puntos)
+
+Si hubo caida/incidencia y quieres recuperar solo rachas globales, usa:
+
+```bash
+python scripts/restore_streaks.py --db data/pole_bot.db
+```
+
+Comportamiento por defecto:
+
+- `dry-run` (no escribe nada)
+- modo `forgiving`
+  - si un usuario tenia actividad antes del inicio de temporada, la racha se reconstruye desde `start_date` de la temporada
+  - si no tenia actividad previa, se reconstruye desde su primer pole de temporada
+- no reduce rachas existentes (solo restaura hacia arriba)
+- modo conservador de `best_streak`: solo sube si sube `current_streak`
+
+Aplicar cambios reales:
+
+```bash
+python scripts/restore_streaks.py --db data/pole_bot.db --apply
+```
+
+Notas operativas:
+
+- En `--apply` crea backup automatico en `data/backups/`.
+- Solo actualiza `global_users` (`current_streak`, `best_streak`, `last_pole_date`, `updated_at`).
+- No modifica puntos ni filas de `season_stats`.
+- Recomendado: parar el bot durante la operacion para evitar escrituras concurrentes.
+
+Opciones utiles:
+
+```bash
+# Limitar a un usuario concreto
+python scripts/restore_streaks.py --db data/pole_bot.db --user-id 123456789012345678
+
+# Forzar temporada concreta
+python scripts/restore_streaks.py --db data/pole_bot.db --season-id season_1
+
+# Recalculo estricto por dias consecutivos registrados
+python scripts/restore_streaks.py --db data/pole_bot.db --mode strict
+
+# Recalcular tambien best_streak historico desde la temporada
+python scripts/restore_streaks.py --db data/pole_bot.db --rebuild-best
+```

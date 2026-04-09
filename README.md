@@ -75,6 +75,7 @@ python main.py
 - SQLite en `data/pole_bot.db`.
 - Migraciones automaticas al iniciar.
 - Schema actual: `v7`.
+- Restauracion de rachas (solo global_users, sin puntos): `scripts/restore_streaks.py`.
 
 No necesitas ejecutar scripts de inicializacion para arrancar el bot en un entorno nuevo.
 
