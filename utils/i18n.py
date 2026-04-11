@@ -122,6 +122,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.type.critical': 'CRÍTICA',
         'pole.type.fast': 'VELOZ',
         'pole.type.normal': 'POLE',
+        'pole.type.late': 'TARDE',
         'pole.type.marranero': 'MARRANERO',
         
         'pole.critical': '⚡ ¡POLE CRÍTICO! En solo **{minutes} minutos**. Eres una máquina.',
@@ -206,6 +207,11 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} 🏁 {delay}. Tranqui pero efectivo.',
             '{mention} ✅ Pole pillado ({delay}). Todo bajo control.',
         ],
+        'pole.notification.description_late': [
+            '{mention} ⏰ Pole tardío en {delay}. Llegaste, que no es poco.',
+            '{mention} ⏰ Tarde pero seguro: {delay}.',
+            '{mention} ⏰ Pole en modo tarde ({delay}).',
+        ],
         'pole.notification.description_marranero': [
             '{mention} 🐷 Pole marranero... {delay} tarde. Mejor tarde que nunca.',
             '{mention} 🐷 Marranero: {delay}. Mañana madruga más.',
@@ -222,6 +228,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.footer.critical': 'a ver si aguantas el ritmo 🔥',
         'pole.footer.fast': 'vas servido 💪',
         'pole.footer.normal': 'bien pillado 👌',
+        'pole.footer.late': 'más vale tarde que nunca ⏰',
         'pole.footer.marranero': 'mañana madruga más 🥱',
         
         # ==================== PROFILE ====================
@@ -757,6 +764,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.type.critical': 'CRITICAL',
         'pole.type.fast': 'FAST',
         'pole.type.normal': 'POLE',
+        'pole.type.late': 'LATE',
         'pole.type.marranero': 'SLEEPYHEAD',
         
         'pole.critical': '⚡ CRITICAL POLE! Just **{minutes} minutes**. Absolutely cracked.',
@@ -841,6 +849,11 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} 🏁 {delay}. Chill but effective.',
             '{mention} ✅ Pole grabbed ({delay}). All good.',
         ],
+        'pole.notification.description_late': [
+            '{mention} ⏰ Late pole in {delay}. Better late than never.',
+            '{mention} ⏰ Late but landed: {delay}.',
+            '{mention} ⏰ Pole in late mode ({delay}).',
+        ],
         'pole.notification.description_marranero': [
             '{mention} 🐷 Sleepyhead pole... {delay} late. Better late than never.',
             '{mention} 🐷 Sleepyhead: {delay}. Wake up earlier tomorrow.',
@@ -857,6 +870,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.footer.critical': 'let\'s see if you can keep up 🔥',
         'pole.footer.fast': 'pretty nice 💪',
         'pole.footer.normal': 'solid grab 👌',
+        'pole.footer.late': 'better late than never ⏰',
         'pole.footer.marranero': 'sleepyhead mode 🥱',
         
         # ==================== PROFILE ====================
@@ -1284,16 +1298,55 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
 
 # ==================== FUNCIÓN PRINCIPAL ====================
 
-# Singleton de Database para evitar crear instancias en cada llamada a t()
-_db_instance = None
+# Cache local de idioma por servidor (guild_id -> lang)
+_guild_lang_cache: Dict[int, str] = {}
 
-def _get_db():
-    """Obtener instancia singleton de Database para i18n"""
-    global _db_instance
-    if _db_instance is None:
-        from utils.database import Database
-        _db_instance = Database()
-    return _db_instance
+
+def _normalize_lang(lang: Optional[str]) -> str:
+    """Normalizar código de idioma y asegurar fallback seguro."""
+    if isinstance(lang, str) and lang in TRANSLATIONS:
+        return lang
+    return 'es'
+
+
+def set_cached_guild_language(guild_id: int, lang: str) -> None:
+    """Actualizar cache local de idioma por servidor."""
+    _guild_lang_cache[guild_id] = _normalize_lang(lang)
+
+
+def get_cached_guild_language(guild_id: Optional[int]) -> Optional[str]:
+    """Leer idioma cacheado para un servidor, si existe."""
+    if guild_id is None:
+        return None
+    return _guild_lang_cache.get(guild_id)
+
+
+async def resolve_guild_language(guild_id: Optional[int], db: Optional[Any] = None) -> str:
+    """
+    Resolver idioma de servidor de forma ASÍNCRONA y cachearlo.
+
+    - Si existe en cache, se devuelve cache.
+    - Si no, se consulta BD asíncrona (si se proporciona db).
+    - Fallback final: 'es'.
+    """
+    if guild_id is None:
+        return 'es'
+
+    cached = get_cached_guild_language(guild_id)
+    if cached:
+        return cached
+
+    if db is None:
+        return 'es'
+
+    try:
+        lang = await db.get_server_language(guild_id)
+    except Exception:
+        lang = 'es'
+
+    normalized = _normalize_lang(lang)
+    set_cached_guild_language(guild_id, normalized)
+    return normalized
 
 def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kwargs: Any) -> str:
     """
@@ -1313,13 +1366,13 @@ def t(key: str, guild_id: Optional[int] = None, lang: Optional[str] = None, **kw
         t('settings.title', lang='en')
         t('common.yes', guild_id=456)
     """
-    # Determinar idioma
+    # Determinar idioma (sin IO bloqueante; usa cache o override explícito)
     if lang is None:
         if guild_id is not None:
-            db = _get_db()
-            lang = db.get_server_language(guild_id)
-        else:
-            lang = 'es'  # Default
+            lang = get_cached_guild_language(guild_id)
+        lang = _normalize_lang(lang)
+    else:
+        lang = _normalize_lang(lang)
     
     # Obtener traducción
     lang_dict = TRANSLATIONS.get(lang, TRANSLATIONS['es'])

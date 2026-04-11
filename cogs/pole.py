@@ -3,10 +3,10 @@ Cog de Pole - Funcionalidad principal del bot
 Maneja el sistema de pole diario con detección automática
 """
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 from discord.ui import View, Select, Button, Modal, TextInput
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 import re
 import asyncio
 import logging
@@ -20,12 +20,18 @@ except Exception:
     LOCAL_TZ = timezone(timedelta(hours=1))
 
 from utils.database import Database
+from utils.scheduler import PoleScheduler
 from utils.scoring import (
-    classify_delay, get_pole_emoji,
+    evaluate_pole_attempt, get_pole_emoji,
     get_pole_name, get_rank_info, get_streak_multiplier,
     check_quota_available
 )
-from utils.i18n import t, get_language_name
+from utils.i18n import (
+    t,
+    get_language_name,
+    resolve_guild_language,
+    set_cached_guild_language,
+)
 
 # Logger
 log = logging.getLogger('PoleCog')
@@ -212,16 +218,18 @@ class LanguageSelectView(View):
         
         async def spanish_callback(interaction: discord.Interaction):
             await self.db.set_server_language(self.guild_id, 'es')
+            set_cached_guild_language(self.guild_id, 'es')
             await interaction.response.send_message(
-                t('settings.language_set', guild_id, language='Español'),
+                t('settings.language_set', guild_id, lang='es', language='Español'),
                 ephemeral=True
             )
             self.stop()
         
         async def english_callback(interaction: discord.Interaction):
             await self.db.set_server_language(self.guild_id, 'en')
+            set_cached_guild_language(self.guild_id, 'en')
             await interaction.response.send_message(
-                t('settings.language_set', guild_id, language='English'),
+                t('settings.language_set', guild_id, lang='en', language='English'),
                 ephemeral=True
             )
             self.stop()
@@ -469,227 +477,88 @@ class PoleCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot._db  # Instancia compartida de Database (creada en main.py)
-        self._notified_openings = set()  # Track already sent notifications (guild_id, date)
-        self._scheduled_notifications = {}  # guild_id -> asyncio.Task
-        self._midnight_summaries_sent = set()  # Track midnight summaries (guild_id, date)
-        self._startup_check_done = False  # Flag para evitar doble ejecución
         self._pole_locks: Dict[str, asyncio.Lock] = {}  # Anti-race-condition: lock por usuario+guild+fecha
-        self._last_generation_date: Optional[str] = None  # Fecha de última ejecución del generador
-        
-        # Iniciar tareas programadas v1.0
-        self.daily_pole_generator.start()  # type: ignore[attr-defined]
-        self.midnight_summary_check.start()  # type: ignore[attr-defined]
-        self.opening_notification_watcher.start()  # type: ignore[attr-defined]
-        # Programar notificaciones exactas para hoy al iniciar
-        asyncio.create_task(self.schedule_all_today_notifications())
+        self._last_generation_date: Optional[str] = None  # Marca de rollover diario en hora local
+        self.scheduler = PoleScheduler(
+            self.db,
+            on_send_summary=self._send_summary,
+            on_close_for_marranero=self._close_pole,
+            on_open_pole=self._open_pole,
+        )
         
         log.info("Pole Cog inicializado correctamente")
     
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """
-        Sistema de robustez/failsafe al iniciar o reconectar el bot.
-        Detecta y corrige problemas causados por outages:
-        1. Genera hora de apertura si falta para hoy
-        2. Resetea rachas perdidas si hubo outage durante la apertura
-        3. Envía resumen de medianoche si se perdió
-        """
-        if self._startup_check_done:
-            return  # Evitar múltiples ejecuciones en reconexiones
-        
-        self._startup_check_done = True
-        log.info("🔄 Ejecutando verificación de robustez post-inicio...")
-        
-        await self._run_startup_failsafe()
+    async def cog_load(self) -> None:
+        """Arranque del Cog: iniciar scheduler APScheduler."""
+        await self.scheduler.start()
+        self._last_generation_date = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
+        log.info("PoleScheduler iniciado correctamente")
     
     async def cog_unload(self) -> None:
-        """Detener tareas cuando se descarga el cog"""
-        self.daily_pole_generator.cancel()  # type: ignore[attr-defined]
-        self.midnight_summary_check.cancel()  # type: ignore[attr-defined]
-        self.opening_notification_watcher.cancel()  # type: ignore[attr-defined]
-        # Cancelar tareas programadas por servidor
-        for task in list(self._scheduled_notifications.values()):
-            try:
-                task.cancel()
-            except:
-                pass
+        """Detener scheduler cuando se descarga el cog."""
+        await self.scheduler.shutdown(wait=False)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Resolver idioma del servidor antes de ejecutar comandos slash del cog."""
+        if interaction.guild is not None:
+            await resolve_guild_language(interaction.guild.id, self.db)
+        return True
+
+    async def _send_summary(self, guild_id: int, summary_date: str) -> None:
+        """Hook del scheduler: enviar resumen diario del guild."""
+        server_config = await self.db.get_server_config(guild_id)
+        if not server_config:
+            return
+
+        set_cached_guild_language(guild_id, str(server_config.get('language') or 'es'))
+
+        channel_id = server_config.get('pole_channel_id')
+        if not channel_id:
+            return
+
+        await self.send_midnight_summary(guild_id, int(channel_id), summary_date)
+
+    async def _close_pole(self, guild_id: int, dt: datetime) -> None:
+        """Hook del scheduler: transición a ventana marranero en medianoche."""
+        dt_local = _ensure_local_tz(dt)
+        self._last_generation_date = dt_local.strftime('%Y-%m-%d')
+
+        # Limpiar locks antiguos (de días pasados) para evitar memory leak.
+        today_str = dt_local.strftime('%Y-%m-%d')
+        old_locks = [key for key in self._pole_locks.keys() if not key.endswith(today_str)]
+        for key in old_locks:
+            del self._pole_locks[key]
+
+        if old_locks:
+            log.info(f"🧹 Limpiados {len(old_locks)} locks antiguos")
+
+        log.info(f"🌙 Guild {guild_id}: pole cerrada, fase marranero activa")
+
+    async def _open_pole(self, guild_id: int, dt: datetime) -> None:
+        """Hook del scheduler: apertura real de la pole del día."""
+        server_config = await self.db.get_server_config(guild_id)
+        if not server_config:
+            return
+
+        set_cached_guild_language(guild_id, str(server_config.get('language') or 'es'))
+
+        channel_id = server_config.get('pole_channel_id')
+        if not channel_id:
+            return
+
+        if int(server_config.get('notify_opening', 1)) == 0:
+            log.info(f"🔕 Guild {guild_id}: apertura en {dt.isoformat()} sin notificación (desactivada)")
+            return
+
+        await self.send_opening_notification(
+            guild_id=guild_id,
+            channel_id=int(channel_id),
+            ping_role_id=server_config.get('ping_role_id'),
+            ping_mode=str(server_config.get('ping_mode', 'none')),
+        )
 
     # ==================== SISTEMA DE ROBUSTEZ/FAILSAFE ====================
     
-    async def _run_startup_failsafe(self):
-        """
-        Sistema de recuperación automática tras outage o reinicio.
-        Se ejecuta una vez en on_ready.
-        """
-        import random
-        now = datetime.now(LOCAL_TZ)
-        today_str = now.strftime('%Y-%m-%d')
-
-        # ==================== AUTO-GENERAR HORA SI FALTA O ES STALE ====================
-        # Detectar si daily_pole_generator no se ejecutó hoy
-        # Esto ocurre si el bot se reinicia después de las 00:00
-        needs_generation = False
-        async with self.db.get_connection() as conn:
-            # Check 1: ¿Hay servidores sin hora configurada?
-            cursor = await conn.execute('''
-                SELECT COUNT(*) FROM servers
-                WHERE pole_channel_id IS NOT NULL AND daily_pole_time IS NULL
-            ''')
-            no_time_count = (await cursor.fetchone())[0]
-            if no_time_count > 0:
-                needs_generation = True
-                log.warning(f"⚠️ {no_time_count} servidor(es) sin hora configurada")
-
-            # Check 2: ¿Hay notification_sent_at stale (de ayer)?
-            # Si existe un timestamp de ayer, daily_pole_generator no corrió hoy (no lo limpió)
-            if not needs_generation:
-                cursor = await conn.execute('''
-                    SELECT notification_sent_at FROM servers
-                    WHERE pole_channel_id IS NOT NULL AND notification_sent_at IS NOT NULL
-                    LIMIT 1
-                ''')
-                row = await cursor.fetchone()
-                if row and row[0]:
-                    try:
-                        notif_date = _ensure_local_tz(datetime.fromisoformat(row[0])).date()
-                        if notif_date < now.date():
-                            needs_generation = True
-                            log.warning(f"⚠️ notification_sent_at stale detectado ({notif_date}). Generador no corrió hoy.")
-                    except Exception:
-                        pass
-        
-        if needs_generation:
-            log.warning("🔄 Forzando generación de horas diarias...")
-            try:
-                await self.daily_pole_generator()  # Ejecutar manualmente
-                log.info("✅ Generación de hora forzada completada")
-            except Exception as e:
-                log.error(f"❌ Error forzando generación: {e}")
-        else:
-            # Tras reinicio, si no hubo que generar, asumimos estado diario válido para hoy.
-            # Esto evita falsas detecciones cross-midnight por _last_generation_date=None.
-            self._last_generation_date = today_str
-        
-        # ==================== CHECKS POR SERVIDOR ====================
-        async with self.db.get_connection() as conn:
-            cursor = await conn.execute('SELECT guild_id, pole_channel_id, daily_pole_time, notify_opening, ping_role_id, ping_mode FROM servers WHERE pole_channel_id IS NOT NULL')
-            servers = await cursor.fetchall()
-        
-        for server in servers:
-            guild_id = server['guild_id']
-            channel_id = server['pole_channel_id']
-            daily_time = server['daily_pole_time']
-            
-            guild = self.bot.get_guild(guild_id)
-            if not guild:
-                continue
-            
-            channel = guild.get_channel(channel_id)
-            if not channel:
-                continue
-            
-            log.debug(f"🔍 [Failsafe] Verificando guild {guild_id}...")
-            
-            # ========== CHECK 1: ¿Hay hora de apertura para hoy? ==========
-            if not daily_time:
-                # Generar hora aleatoria para hoy
-                random_hour = random.randint(0, 23)
-                random_minute = random.randint(0, 59)
-                time_str = f"{random_hour:02d}:{random_minute:02d}:00"
-                await self.db.set_daily_pole_time(guild_id, time_str)
-                daily_time = time_str
-                log.warning(f"   ⚠️ Sin hora configurada → generada: {time_str}")
-            
-            # Parsear hora de apertura
-            try:
-                h, m, s = [int(x) for x in str(daily_time).split(':')]
-                opening_time = _opening_time_for_day(now, h, m, s)
-            except Exception as e:
-                log.error(f"   ❌ Error parseando hora: {e}")
-                continue
-            
-            # ========== CHECK 2: ¿Se perdió la notificación de apertura? ==========
-            # Verificar si la hora de apertura ya pasó
-            if now > opening_time:
-                notif_key = (guild_id, today_str)
-                
-                # Calcular cuánto tiempo pasó desde la apertura
-                minutes_since_opening = (now - opening_time).total_seconds() / 60
-                
-                # Si ya notificamos o pasó demasiado tiempo, no hacer nada
-                if notif_key in self._notified_openings:
-                    log.info(f"   ✅ Notificación ya enviada hoy")
-                elif minutes_since_opening > 60:
-                    # Marcar como "enviado" para evitar reintentos
-                    self._notified_openings.add(notif_key)
-                    log.warning(f"   ⚠️ Notificación omitida (>{int(minutes_since_opening)}m tarde)")
-                else:
-                    # Verificar si ya hay poles hoy
-                    today_poles = await self.db.get_poles_today(guild_id)
-                    
-                    if today_poles:
-                        # Ya hay poles = el sistema funcionó, la gente se enteró
-                        # NO enviar notificación, solo marcar como notificado
-                        self._notified_openings.add(notif_key)
-                        log.info(f"   ✅ Ya hay {len(today_poles)} poles hoy - no se requiere notificación")
-                    else:
-                        # Sin poles = posible outage, enviar notificación de recuperación
-                        # PERO: Solo resetear rachas si estamos CERCA de la hora de apertura
-                        # Si pasó mucho tiempo, las rachas ya se resetearon o están correctas
-                        try:
-                            # Solo resetear rachas si estamos en ventana razonable (< 30 min desde apertura)
-                            # Esto evita reseteos incorrectos por outages largos
-                            if minutes_since_opening < 30:
-                                await self._reset_lost_streaks_before_opening(guild_id, channel_id)
-                            
-                            embed = discord.Embed(
-                                title=t('notification.pole_open_recovery', guild_id),
-                                description=t('notification.pole_open_recovery_desc', guild_id),
-                                color=discord.Color.orange(),
-                                timestamp=now
-                            )
-                            embed.set_footer(text=t('notification.recovery_footer', None, time=daily_time))
-                            
-                            # Ping si está configurado
-                            content = None
-                            if server['ping_mode'] == 'role' and server['ping_role_id']:
-                                role = guild.get_role(server['ping_role_id'])
-                                if role:
-                                    content = f"{role.mention}"
-                            
-                            await channel.send(content=content, embed=embed)
-                            self._notified_openings.add(notif_key)
-                            log.info(f"   ✅ Notificación de recuperación enviada ({int(minutes_since_opening)}m tarde)")
-                        except Exception as e:
-                            log.error(f"   ❌ Error enviando notificación de recuperación: {e}")
-            
-            # ========== CHECK 3: ¿Se perdió el resumen de medianoche? ==========
-            # Si es después de las 00:15 y no se envió resumen hoy
-            if now.hour == 0 and now.minute < 30:
-                summary_key = (guild_id, today_str)
-                if summary_key not in self._midnight_summaries_sent:
-                    # Verificar si hubo poles ayer
-                    yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
-                    async with self.db.get_connection() as conn:
-                        cursor = await conn.execute('''
-                            SELECT COUNT(*) FROM poles
-                            WHERE guild_id = ? AND pole_date = ?
-                        ''', (guild_id, yesterday))
-                        yesterday_count = (await cursor.fetchone())[0]
-                    
-                    if yesterday_count > 0:
-                        log.warning(f"   ⚠️ Resumen de medianoche no enviado, enviando ahora...")
-                        try:
-                            await self.send_midnight_summary(guild_id, channel_id)
-                            self._midnight_summaries_sent.add(summary_key)
-                            log.info(f"   ✅ Resumen de medianoche enviado")
-                        except Exception as e:
-                            log.error(f"   ❌ Error enviando resumen: {e}")
-
-        
-        # Reprogramar notificaciones para hoy
-        await self.schedule_all_today_notifications()
-        log.info("✅ Verificación de robustez completada")
 
     # ==================== HELPERS ====================
 
@@ -843,8 +712,12 @@ class PoleCog(commands.Cog):
                     'notify_winner': 1,
                     'ping_role_id': None,
                     'ping_mode': 'none',
+                    'language': 'es',
                     'migration_in_progress': 0,
                 }
+
+        # Mantener cache de idioma en caliente para respuestas de texto (on_message).
+        set_cached_guild_language(guild.id, str(server_config.get('language') or 'es'))
         
         # Verificar si hay migración en progreso
         if server_config.get('migration_in_progress', 0):
@@ -885,13 +758,13 @@ class PoleCog(commands.Cog):
     
     async def process_pole(self, message: discord.Message):
         """
-        Procesar un pole válido y determinar tipo, puntos, etc.
-        
-        FLUJO DE VALIDACIÓN (orden importante):
-        1. Verificar configuración del servidor
-        2. Determinar si estamos en ventana de marranero o pole normal
-        3. Verificar duplicados (ya hizo pole hoy/ayer según corresponda)
-        4. Procesar y otorgar puntos
+        Procesar un pole válido usando fase actual del scheduler + evaluación centralizada.
+
+        Flujo:
+        1) Leer fase actual (cerrada/abierta) y hora de apertura desde BD.
+        2) Evaluar intento con evaluate_pole_attempt(...).
+        3) Aplicar validación global por effective_pole_date.
+        4) Persistir de forma atómica y actualizar estadísticas.
         """
         now = datetime.now(LOCAL_TZ)
         guild = message.guild
@@ -899,7 +772,8 @@ class PoleCog(commands.Cog):
             return
 
         server_config = await self.db.get_server_config(guild.id) or {}
-        daily_time = server_config.get('daily_pole_time')
+        set_cached_guild_language(guild.id, str(server_config.get('language') or 'es'))
+        daily_time = await self.db.get_daily_pole_time(guild.id)
         
         # ========== PASO 1: Verificar configuración ==========
         if not daily_time:
@@ -919,171 +793,87 @@ class PoleCog(commands.Cog):
                 pass
             return
         
-        # HORA REAL DE APERTURA: Usar timestamp de notificación si existe (más justo)
-        # Si la notificación llegó tarde por lag, el delay se cuenta desde que se envió, no desde la hora programada
-        # IMPORTANTE: Solo usar si es de HOY - timestamps de ayer causan clasificación incorrecta
-        notification_sent_str = await self.db.get_notification_sent_at(guild.id)
-        
-        # ========== DETECCIÓN CROSS-MIDNIGHT ==========
-        # Si el generador NO ha corrido hoy, la hora actual puede pertenecer a AYER.
-        # Esto puede pasar tras reinicios/outages y no depende de que la hora fuera nocturna.
-        cross_midnight = False
-        today_str = now.strftime('%Y-%m-%d')  # Default: hoy (se sobreescribe si cross-midnight)
-        generated_today = self._last_generation_date == today_str
+        phase = self.scheduler.get_phase(guild.id)
+        phase_value = str(getattr(phase, 'value', phase))
 
-        # Regla principal: notificación enviada hoy, pero sin generación de hoy -> pertenece a ayer.
-        if not generated_today and notification_sent_str:
+        # Hora de referencia por defecto: apertura de hoy (hora programada).
+        opening_time = _opening_time_for_day(now, h, m, s)
+
+        # Si estamos en fase abierta, priorizar hora real de notificación (delay más justo).
+        notification_sent_str = await self.db.get_notification_sent_at(guild.id)
+        if phase_value == 'ABIERTA_JUGANDO' and notification_sent_str:
             try:
                 notif_dt = _ensure_local_tz(datetime.fromisoformat(notification_sent_str))
                 if notif_dt.date() == now.date():
-                    cross_midnight = True
+                    opening_time = notif_dt
             except Exception:
                 pass
 
-        # Fallback legado: madrugada + hora nocturna suele indicar arrastre de ayer.
-        if not cross_midnight and h >= 20 and now.hour < 6:
-            if notification_sent_str:
-                try:
-                    notif_dt = _ensure_local_tz(datetime.fromisoformat(notification_sent_str))
-                    if notif_dt.date() == now.date() and notif_dt.hour < 6:
-                        cross_midnight = True
-                except Exception:
-                    pass
-            elif not generated_today:
-                cross_midnight = True
-        
-        if cross_midnight:
-            # Este pole pertenece a AYER
-            yesterday = now - timedelta(days=1)
-            yesterday_str = yesterday.strftime('%Y-%m-%d')
-            opening_time_yesterday = _opening_time_for_day(yesterday, h, m, s)
-            
-            # Usar notification_sent_at para delay justo si existe
-            if notification_sent_str:
-                try:
-                    notif_dt = _ensure_local_tz(datetime.fromisoformat(notification_sent_str))
-                    opening_time_today = notif_dt
-                except Exception:
-                    opening_time_today = opening_time_yesterday
-            else:
-                opening_time_today = opening_time_yesterday
-            
-            today_str = yesterday_str
-            log.info(f"🌙 Cross-midnight: pole de {guild.name} pertenece a {yesterday_str} (apertura: {h:02d}:{m:02d})")
-        elif notification_sent_str:
-            try:
-                notif_dt = _ensure_local_tz(datetime.fromisoformat(notification_sent_str))
-                # VALIDACIÓN DE FECHA: Solo usar si la notificación es de HOY
-                # Sin esta validación, un timestamp de ayer hace que poles de hoy
-                # se clasifiquen como fast/normal en vez de marranero
-                if notif_dt.date() == now.date():
-                    opening_time_today = notif_dt
-                    log.debug(f"⏰ Usando hora de notificación real de hoy: {notif_dt.strftime('%H:%M:%S')}")
-                else:
-                    # Timestamp de otro día → IGNORAR, usar hora programada
-                    opening_time_today = _opening_time_for_day(now, h, m, s)
-                    log.debug(f"⚠️ notification_sent_at stale ({notif_dt.date()}), usando hora programada {h:02d}:{m:02d}")
-            except Exception:
-                # Fallback: usar hora programada
-                opening_time_today = _opening_time_for_day(now, h, m, s)
-        else:
-            # Si no hay notificación enviada todavía, usar hora programada
-            opening_time_today = _opening_time_for_day(now, h, m, s)
-        
-        today_str = today_str if cross_midnight else now.strftime('%Y-%m-%d')
-        
-        # ========== PASO 2: Determinar modo (marranero vs normal) ==========
-        use_marranero = False
-        opening_time = opening_time_today
-        effective_date = today_str  # Fecha para la racha
-        
-        # Caso A: ANTES de la apertura de hoy
-        if now < opening_time_today:
-            # Ventana de marranero: desde apertura de ayer hasta apertura de hoy
+        # Si estamos en fase cerrada, el marranero se evalúa contra la apertura de AYER.
+        if phase_value == 'CERRADA_ESPERANDO_APERTURA':
             last_opening_str = await self.db.get_last_daily_pole_time(guild.id)
             if last_opening_str:
                 try:
-                    last_h, last_m = [int(x) for x in last_opening_str.split(':')[:2]]
+                    parts = str(last_opening_str).split(':')
+                    last_h = int(parts[0])
+                    last_m = int(parts[1])
+                    last_s = int(parts[2]) if len(parts) > 2 else 0
                     yesterday = now - timedelta(days=1)
-                    opening_time_yesterday = _opening_time_for_day(yesterday, last_h, last_m, 0)
-                    yesterday_str = yesterday.strftime('%Y-%m-%d')
+                    opening_time = _opening_time_for_day(yesterday, last_h, last_m, last_s)
+                except Exception as exc:
+                    log.warning(f"⚠️ Error parseando last_daily_pole_time en guild {guild.id}: {exc}")
 
-                    # PRIMERO: Verificar si hizo pole AYER en CUALQUIER servidor (validación global)
-                    # IMPORTANTE: NO contar marraneros (son recuperación del día anterior).
-                    global_pole_yesterday = await self.db.get_user_pole_on_date_global(
-                        message.author.id, yesterday_str, exclude_created_today=True
+        # Seguridad defensiva: si por drift de estado aparece abierta antes de tiempo, se rechaza.
+        if phase_value == 'ABIERTA_JUGANDO' and now < opening_time:
+            await self.db.increment_impatient_attempts(message.author.id, guild.id)
+            try:
+                await message.add_reaction('⏳')
+            except:
+                pass
+            try:
+                await message.reply(t('pole.not_yet', guild.id))
+            except:
+                pass
+            return
+
+        try:
+            evaluation = evaluate_pole_attempt(
+                user_time=now,
+                opening_time=opening_time,
+                phase=phase,
+            )
+        except ValueError as exc:
+            log.error(f"❌ Error evaluando pole en guild {guild.id}: {exc}")
+            try:
+                await message.reply(t('error.generic', guild.id))
+            except:
+                pass
+            return
+
+        pole_type = evaluation['pole_type']
+        delay_minutes = max(0, int(evaluation['delay_minutes']))
+        effective_date = str(evaluation['effective_pole_date'])
+
+        # Verificación global por fecha efectiva (marranero = ayer, normal = hoy).
+        global_pole = await self.db.get_user_pole_on_date_global(message.author.id, effective_date)
+        if global_pole:
+            await self.db.increment_impatient_attempts(message.author.id, guild.id)
+            existing_gid = int(global_pole.get('guild_id', 0))
+
+            if existing_gid and existing_gid != guild.id:
+                prev_guild = self.bot.get_guild(existing_gid)
+                prev_name = prev_guild.name if prev_guild else f"ID {existing_gid}"
+                try:
+                    await message.add_reaction('🚫')
+                except:
+                    pass
+                try:
+                    await message.reply(
+                        t('pole.already_done_other_server', guild.id, server_name=prev_name)
                     )
-
-                    if global_pole_yesterday:
-                        # Ya hizo pole ayer (en este u otro servidor), tiene que esperar al de hoy
-                        try:
-                            await message.add_reaction('⏳')
-                        except:
-                            pass
-                        try:
-                            await message.reply(t('pole.yesterday_done', guild.id))
-                        except:
-                            pass
-                        return
-
-                    # SEGUNDO: Verificar si ya hizo marranero HOY en este servidor
-                    # Un marranero tiene pole_date = yesterday_str pero se hace hoy
-                    user_marranero_today = await self.db.user_has_pole_on_date(message.author.id, guild.id, yesterday_str)
-                    if user_marranero_today:
-                        # Ya hizo marranero hoy en este servidor
-                        await self.db.increment_impatient_attempts(message.author.id, guild.id)
-                        try:
-                            await message.add_reaction('🛑')
-                        except:
-                            pass
-                        try:
-                            embed = discord.Embed(
-                                description=t('pole.already_done_today', guild.id),
-                                color=discord.Color.orange()
-                            )
-                            embed.set_image(url="https://i.imgflip.com/37dceb.jpg")
-                            await message.reply(embed=embed)
-                        except:
-                            pass
-                        return
-                    
-                    # Puede hacer marranero (no hizo pole ayer en ningún servidor ni marranero hoy aquí)
-                    use_marranero = True
-                    opening_time = opening_time_yesterday
-                    effective_date = yesterday_str
-                except Exception:
-                    # Si falla al parsear la hora de ayer, no se puede hacer marranero
-                    await self.db.increment_impatient_attempts(message.author.id, guild.id)
-                    try:
-                        await message.add_reaction('⏳')
-                    except:
-                        pass
-                    try:
-                        await message.reply(t('pole.not_yet', guild.id))
-                    except:
-                        pass
-                    return
-            
-            # Si no hay última hora registrada (primer día del servidor), no se puede hacer nada
-            if not use_marranero:
-                await self.db.increment_impatient_attempts(message.author.id, guild.id)
-                try:
-                    await message.add_reaction('⏳')
                 except:
                     pass
-                try:
-                    await message.reply(t('pole.not_yet', guild.id))
-                except:
-                    pass
-                return
-        
-        # Caso B: DESPUÉS de la apertura de hoy (pole normal)
-        else:
-            # ¿Ya hizo pole HOY en este servidor?
-            user_pole_today = await self.db.user_has_pole_on_date(message.author.id, guild.id, today_str)
-            if user_pole_today:
-                # Incrementar stat secreta de intentos impacientes
-                await self.db.increment_impatient_attempts(message.author.id, guild.id)
+            else:
                 try:
                     await message.add_reaction('🛑')
                 except:
@@ -1097,40 +887,19 @@ class PoleCog(commands.Cog):
                     await message.reply(embed=embed)
                 except:
                     pass
-                return
-        
-        # ========== PASO 3: Verificación global para poles normales (después de apertura) ==========
-        # Para marranero ya se verificó arriba. Aquí solo verificamos poles normales.
-        if not use_marranero:
-            # Verificar que no haya hecho pole HOY en cualquier servidor
-            global_pole = await self.db.get_user_pole_on_date_global(message.author.id, effective_date)
-            if global_pole and int(global_pole.get('guild_id', 0)) != guild.id:
-                # Ya hizo pole hoy en otro servidor
-                await self.db.increment_impatient_attempts(message.author.id, guild.id)
-                prev_guild = self.bot.get_guild(int(global_pole['guild_id']))
-                prev_name = prev_guild.name if prev_guild else f"ID {global_pole['guild_id']}"
-                try:
-                    await message.add_reaction('🚫')
-                except:
-                    pass
-                try:
-                    await message.reply(
-                        t('pole.already_done_other_server', guild.id, server_name=prev_name)
-                    )
-                except:
-                    pass
-                return
-        
-        # ========== PASO 4: Procesar el pole ==========
-        # Obtener poles del día para posición (usar pole_date para contar correctamente)
-        today_poles = await self.db.get_poles_today(guild.id, use_pole_date=True)
-        position = len(today_poles) + 1
+            return
 
-        # Calcular retraso y clasificar
-        delay_minutes = int((now - opening_time).total_seconds() // 60)
-        is_next_day = use_marranero  # Si es marranero, es "día siguiente"
-        
-        pole_type = classify_delay(delay_minutes, is_next_day)
+        # Posición y conteos por fecha efectiva (no forzar "hoy").
+        async with self.db.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT pole_type FROM poles
+                WHERE guild_id = ? AND pole_date = ?
+                ORDER BY user_time ASC
+            ''', (guild.id, effective_date))
+            day_rows = await cursor.fetchall()
+
+        day_pole_types = [str(row[0]) for row in day_rows]
+        position = len(day_pole_types) + 1
         
         # ====== VERIFICAR CUOTAS (solo para critical y fast) ======
         # La degradación es SILENCIOSA: si critical está lleno, baja a fast; si fast lleno, a normal.
@@ -1143,7 +912,7 @@ class PoleCog(commands.Cog):
             
             # Verificar cuota de critical
             if pole_type == 'critical':
-                poles_of_type = sum(1 for p in today_poles if p.get('pole_type') == 'critical')
+                poles_of_type = sum(1 for p in day_pole_types if p == 'critical')
                 has_quota, current, max_allowed = check_quota_available('critical', poles_of_type, active_players)
                 
                 if not has_quota:
@@ -1153,7 +922,7 @@ class PoleCog(commands.Cog):
             # Verificar cuota de fast (ya sea original o degradado desde critical)
             if pole_type == 'fast':
                 # Solo contar poles ORIGINALMENTE fast (no degradados) para cuota justa
-                poles_of_type = sum(1 for p in today_poles if p.get('pole_type') == 'fast')
+                poles_of_type = sum(1 for p in day_pole_types if p == 'fast')
                 has_quota, current, max_allowed = check_quota_available('fast', poles_of_type, active_players)
                 
                 if not has_quota:
@@ -1234,6 +1003,8 @@ class PoleCog(commands.Cog):
             update_data['fast_poles'] = int(user.get('fast_poles', 0)) + 1
         elif pole_type == 'normal':
             update_data['normal_poles'] = int(user['normal_poles']) + 1
+        elif pole_type == 'late':
+            update_data['late_poles'] = int(user.get('late_poles', 0)) + 1
         elif pole_type == 'marranero':
             update_data['marranero_poles'] = int(user['marranero_poles']) + 1
 
@@ -1268,7 +1039,7 @@ class PoleCog(commands.Cog):
                 season_update['season_critical'] = season_stats['season_critical'] + 1
             elif pole_type == 'fast':
                 season_update['season_fast'] = season_stats['season_fast'] + 1
-            elif pole_type == 'normal':
+            elif pole_type in ('normal', 'late'):
                 season_update['season_normal'] = season_stats['season_normal'] + 1
             elif pole_type == 'marranero':
                 season_update['season_marranero'] = season_stats['season_marranero'] + 1
@@ -1284,7 +1055,7 @@ class PoleCog(commands.Cog):
                 'season_poles': 1,
                 'season_critical': 1 if pole_type == 'critical' else 0,
                 'season_fast': 1 if pole_type == 'fast' else 0,
-                'season_normal': 1 if pole_type == 'normal' else 0,
+                'season_normal': 1 if pole_type in ('normal', 'late') else 0,
                 'season_marranero': 1 if pole_type == 'marranero' else 0,
                 'season_best_streak': new_streak
             }
@@ -1442,6 +1213,8 @@ class PoleCog(commands.Cog):
         if interaction.guild is None:
             await interaction.response.send_message(t('errors.server_only_short', None), ephemeral=True)
             return
+
+        await resolve_guild_language(interaction.guild.id, self.db)
         
         member = interaction.user if isinstance(interaction.user, discord.Member) else interaction.guild.get_member(interaction.user.id)
         if member is None:
@@ -2467,184 +2240,7 @@ class PoleCog(commands.Cog):
     
     # [DEPRECATED] season_leaderboard eliminado. Usar /leaderboard con 'temporada'.
     
-    # ==================== TAREAS PROGRAMADAS v1.0 ====================
-    
-    @tasks.loop(time=time(hour=0, minute=0, tzinfo=LOCAL_TZ))
-    async def daily_pole_generator(self):
-        """
-        Generar hora de apertura diaria a medianoche (00:00 hora local) para cada servidor.
-        Aplica margen mínimo entre aperturas y verifica cambio de temporada.
-        
-        IMPORTANTE: Se ejecuta a las 00:00 para que:
-        - notification_sent_at de ayer se limpie inmediatamente
-        - Las horas nuevas estén disponibles desde el inicio del día
-        - La ventana de marranero funcione correctamente
-        
-        NOTA: Si el bot se reinicia después de las 00:00, _run_startup_failsafe() 
-        ejecutará este método manualmente para generar las horas faltantes.
-        """
-        import random
-        from utils.scoring import get_current_season, get_season_info
-        
-        now = datetime.now(LOCAL_TZ)
-        # El decorador @tasks.loop con time=00:00 ya garantiza ejecución a medianoche
-
-        # ==================== VERIFICAR CAMBIO DE TEMPORADA ====================
-        # Esto debe hacerse ANTES de generar las horas del día
-        old_season = None
-        new_season = None
-
-        try:
-            async with self.db.get_connection() as conn:
-                cursor = await conn.execute('SELECT season_id FROM seasons WHERE is_active = 1')
-                row = await cursor.fetchone()
-                old_season = row[0] if row else None
-
-            current_season = get_current_season()
-
-            # Si cambió la temporada (normalmente en año nuevo)
-            if old_season and old_season != current_season:
-                log.info(f"🎊 ¡CAMBIO DE TEMPORADA DETECTADO! {old_season} → {current_season}")
-
-                # Ejecutar migración automática usando sistema unificado
-                migrated = await self.db.migrate_season()
-                
-                if migrated:
-                    new_season = current_season
-                    # Enviar mensaje de felicitación a todos los servidores
-                    await self._send_season_change_announcement(old_season, new_season)
-                else:
-                    log.info("ℹ️  La migración ya se había ejecutado previamente")
-        except Exception as e:
-            log.error(f"⚠️ Error verificando temporada: {e}")
-        
-        # Iterar por todos los servidores configurados
-        async with self.db.get_connection() as conn:
-            cursor = await conn.execute('''
-                SELECT guild_id FROM servers
-                WHERE pole_channel_id IS NOT NULL
-            ''')
-            servers = await cursor.fetchall()
-        
-        log.info(f"📋 Generando horas para {len(servers)} servidores configurados...")
-        
-        # Margen mínimo entre poles: 4 horas (configurable)
-        MIN_HOURS_BETWEEN_POLES = 4
-        # Jitter aleatorio para reducir predictibilidad (±30 minutos)
-        JITTER_MINUTES = 30
-        
-        for server in servers:
-            guild_id = server['guild_id']
-            
-            # Validar que el bot todavía está en este servidor
-            guild = self.bot.get_guild(guild_id)
-            if not guild:
-                log.warning(f"⚠️ Saltando guild {guild_id}: bot ya no está en el servidor")
-                continue
-            
-            # Obtener hora de apertura generada AYER (no del último pole)
-            last_opening_str = await self.db.get_last_daily_pole_time(guild_id)
-            
-            # Inicializar variables
-            random_hour = 12  # Valor por defecto
-            random_minute = 0
-            
-            # Generar hora aleatoria con validación de margen
-            max_attempts = 100
-            valid_time_found = False
-            
-            for attempt in range(max_attempts):
-                # Generar hora aleatoria (00:00 - 23:59)
-                random_hour = random.randint(0, 23)
-                random_minute = random.randint(0, 59)
-                
-                # Si no hay apertura previa, cualquier hora es válida
-                if not last_opening_str:
-                    valid_time_found = True
-                    break
-                
-                # Calcular diferencia con la apertura de ayer
-                try:
-                    # Apertura de ayer
-                    yesterday = datetime.now(LOCAL_TZ) - timedelta(days=1)
-                    last_parts = last_opening_str.split(':')
-                    last_hour = int(last_parts[0])
-                    last_minute = int(last_parts[1])
-                    last_opening = yesterday.replace(hour=last_hour, minute=last_minute, second=0)
-
-                    # Apertura propuesta para hoy
-                    today = datetime.now(LOCAL_TZ).replace(hour=random_hour, minute=random_minute, second=0)
-                    
-                    # Calcular diferencia en horas
-                    time_diff = (today - last_opening).total_seconds() / 3600
-                    
-                    # Aplicar jitter aleatorio al margen para reducir predictibilidad
-                    jitter = random.randint(-JITTER_MINUTES, JITTER_MINUTES) / 60.0
-                    effective_margin = MIN_HOURS_BETWEEN_POLES + jitter
-                    
-                    # Validar margen mínimo con jitter
-                    if time_diff >= effective_margin:
-                        valid_time_found = True
-                        break
-                    
-                except Exception as e:
-                    log.error(f"⚠️ Error calculando margen para guild {guild_id}: {e}")
-                    # Si hay error, aceptar esta hora
-                    valid_time_found = True
-                    break
-            
-            # Si después de todos los intentos no se encontró hora válida,
-            # forzar una hora que cumpla el margen
-            if not valid_time_found and last_opening_str:
-                try:
-                    last_parts = last_opening_str.split(':')
-                    last_hour = int(last_parts[0])
-                    last_minute = int(last_parts[1])
-                    
-                    # Calcular hora mínima para hoy (ayer + MIN_HOURS)
-                    min_hour = (last_hour + MIN_HOURS_BETWEEN_POLES) % 24
-                    
-                    # Generar hora entre min_hour y fin del día
-                    if min_hour < 23:
-                        random_hour = random.randint(min_hour, 23)
-                        random_minute = random.randint(0, 59)
-                    else:
-                        # Si min_hour >= 23, usar la primera hora válida del día siguiente
-                        random_hour = 0
-                        random_minute = random.randint(0, 59)
-                    
-                    log.warning(f"⚠️ Forzando hora con margen para guild {guild_id}: {random_hour:02d}:{random_minute:02d}")
-                except Exception as e:
-                    log.error(f"❌ Error forzando margen para guild {guild_id}: {e}")
-                    # Fallback: hora aleatoria simple
-                    random_hour = random.randint(8, 20)
-                    random_minute = random.randint(0, 59)
-            
-            # Guardar en DB
-            time_str = f"{random_hour:02d}:{random_minute:02d}:00"
-            await self.db.set_daily_pole_time(guild_id, time_str)
-
-            # Limpiar timestamp de notificación anterior (nueva hora = nuevo día)
-            await self.db.clear_notification_sent_at(guild_id)
-            
-            if last_opening_str:
-                log.info(f"✅ Hora generada para guild {guild_id}: {time_str} (anterior: {last_opening_str}, margen: ≥{MIN_HOURS_BETWEEN_POLES}h)")
-            else:
-                log.info(f"✅ Hora generada para guild {guild_id}: {time_str} (primera vez)")
-        
-        # Marcar que el generador corrió hoy (para que el watcher no lo fuerce)
-        self._last_generation_date = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
-
-        # Limpiar locks antiguos (de días pasados) para evitar memory leak
-        today_str = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
-        old_locks = [key for key in self._pole_locks.keys() if not key.endswith(today_str)]
-        for key in old_locks:
-            del self._pole_locks[key]
-        if old_locks:
-            log.info(f"🧹 Limpiados {len(old_locks)} locks antiguos")
-        
-        # Programar notificaciones exactas para hoy tras generar todas las horas
-        await self.schedule_all_today_notifications()
+    # ==================== HELPERS DE TEMPORADA ====================
     
     async def _send_season_change_announcement(self, old_season_id: str, new_season_id: str):
         """
@@ -3042,22 +2638,6 @@ class PoleCog(commands.Cog):
             'speed': top_speed
         }
     
-    @daily_pole_generator.before_loop
-    async def before_daily_generator(self):
-        """Esperar a que el bot esté listo. Discord.py programa la primera ejecución a las 00:00."""
-        await self.bot.wait_until_ready()
-        log.info("⏰ daily_pole_generator listo. Próxima ejecución a las 00:00.")
-    
-    @tasks.loop(seconds=30)  # Revisar cada 30 segundos para mayor precisión
-    async def check_opening_notification(self):
-        """Desactivado: reemplazado por programaciones exactas por servidor."""
-        return
-    
-    @check_opening_notification.before_loop
-    async def before_opening_check(self):
-        """Esperar a que el bot esté listo"""
-        await self.bot.wait_until_ready()
-    
     async def send_opening_notification(self, guild_id: int, channel_id: int, ping_role_id: Optional[int], ping_mode: str):
         """
         Enviar notificación de apertura del pole
@@ -3211,287 +2791,10 @@ class PoleCog(commands.Cog):
             except Exception as e:
                 log.error(f"⚠️ Error avisando racha perdida en guild {guild_id}: {e}")
 
-    # ==================== SCHEDULER EXACTO DE NOTIFICACIONES ====================
-    async def schedule_all_today_notifications(self):
-        """Programar una tarea exacta por servidor para enviar la notificación a la hora configurada de hoy."""
-        await self.bot.wait_until_ready()
-        now = datetime.now(LOCAL_TZ)
-        today_key = now.date().isoformat()
-
-        # Limpiar tareas anteriores para evitar duplicados
-        for gid, task in list(self._scheduled_notifications.items()):
-            if task.done() or task.cancelled():
-                self._scheduled_notifications.pop(gid, None)
-
-        async with self.db.get_connection() as conn:
-            cursor = await conn.execute('''
-                SELECT guild_id, pole_channel_id, daily_pole_time, notify_opening, ping_role_id, ping_mode
-                FROM servers
-                WHERE pole_channel_id IS NOT NULL
-                  AND notify_opening = 1
-                  AND daily_pole_time IS NOT NULL
-            ''')
-            servers = await cursor.fetchall()
-        
-        for server in servers:
-            guild_id = server['guild_id']
-            channel_id = server['pole_channel_id']
-            daily_time = server['daily_pole_time']
-            
-            # Verificar que el servidor existe
-            if not self.bot.get_guild(guild_id):
-                continue
-            
-            try:
-                h, m, s = [int(x) for x in str(daily_time).split(':')]
-                opening_time = _opening_time_for_day(now, h, m, s)
-            except Exception:
-                continue
-            # Si la hora ya pasó, no programar (evitar envíos tardíos)
-            if opening_time <= now:
-                continue
-            await self._schedule_single_notification(
-                guild_id, channel_id, opening_time,
-                server['ping_role_id'], server['ping_mode'], today_key
-            )
-
-    async def _schedule_single_notification(self, guild_id: int, channel_id: int, opening_time: datetime,
-                                            ping_role_id: Optional[int], ping_mode: str, today_key: str):
-        """Programar una notificación única para un servidor a una hora exacta."""
-        # Cancelar si ya hay una tarea pendiente para ese guild
-        existing = self._scheduled_notifications.get(guild_id)
-        if existing and not existing.done() and not existing.cancelled():
-            try:
-                existing.cancel()
-            except:
-                pass
-        
-        async def runner():
-            try:
-                now = datetime.now(LOCAL_TZ)
-                delay = (opening_time - now).total_seconds()
-
-                # Seguridad: no permitir delays mayores a 24 horas (algo está mal)
-                if delay > 86400:
-                    log.warning(f"⚠️ [Scheduler] Delay sospechosamente largo para guild {guild_id}: {delay}s")
-                    return
-
-                if delay > 0:
-                    # Dividir sleeps largos en chunks de 1 hora para poder cancelar más fácilmente
-                    while delay > 3600:
-                        await asyncio.sleep(3600)
-                        delay -= 3600
-                        # Verificar si debemos cancelar
-                        now = datetime.now(LOCAL_TZ)
-                        if now >= opening_time:
-                            break
-                    
-                    # Sleep final
-                    if delay > 0:
-                        await asyncio.sleep(delay)
-                
-                # Evitar duplicado por si se reprogramó
-                key = (guild_id, today_key)
-                if key in self._notified_openings:
-                    return
-                
-                # Marcar ANTES de enviar → evita race condition con el watcher
-                # (sin await entre check y add = atómico en async single-thread)
-                self._notified_openings.add(key)
-                await self.send_opening_notification(guild_id, channel_id, ping_role_id, ping_mode)
-                
-            except asyncio.CancelledError:
-                # Normal cuando se cancela la tarea
-                pass
-            except Exception as e:
-                log.error(f"❌ Error en scheduler de guild {guild_id}: {e}")
-            finally:
-                # Auto-limpiar del diccionario
-                self._scheduled_notifications.pop(guild_id, None)
-        
-        task = asyncio.create_task(runner())
-        self._scheduled_notifications[guild_id] = task
-    
-    # ==================== VIGILANTE DE NOTIFICACIONES (FAILSAFE) ====================
-    @tasks.loop(minutes=1)
-    async def opening_notification_watcher(self):
-        """
-        Vigilante que verifica cada minuto si se perdió alguna notificación de apertura.
-        Esto es un failsafe por si el scheduler de asyncio.sleep() falla.
-        
-        Escenario: Si el bot se reinicia o pierde conexión después de medianoche pero antes
-        de la hora del pole, el task programado se pierde. Este vigilante lo detecta y
-        envía la notificación tardía.
-        
-        También fuerza la ejecución del daily_pole_generator si no ha corrido tras medianoche.
-        """
-        now = datetime.now(LOCAL_TZ)
-        today_str = now.date().isoformat()
-
-        # ========== FORZAR GENERADOR SI NO HA CORRIDO ==========
-        # El daily_pole_generator a veces tarda ~25 minutos en ejecutarse por drift de discord.py.
-        # Si pasaron 2+ minutos desde medianoche y no ha corrido, forzarlo.
-        if now.hour == 0 and now.minute >= 2 and self._last_generation_date != today_str:
-            log.warning("⏰ [Watcher] daily_pole_generator no ha corrido hoy, forzando ejecución...")
-            try:
-                await self.daily_pole_generator()
-                log.info("✅ [Watcher] Generación forzada completada")
-            except Exception as e:
-                log.error(f"❌ [Watcher] Error forzando generador: {e}")
-            return  # Dejar que la siguiente iteración trabaje con datos frescos
-        
-        # ========== LIMPIEZA DE TAREAS MUERTAS (evitar memory leak) ==========
-        dead_tasks = [
-            gid for gid, task in self._scheduled_notifications.items()
-            if task.done() or task.cancelled()
-        ]
-        for gid in dead_tasks:
-            self._scheduled_notifications.pop(gid, None)
-        
-        # ========== VERIFICAR NOTIFICACIONES PERDIDAS ==========
-        try:
-            async with self.db.get_connection() as conn:
-                cursor = await conn.execute('''
-                    SELECT guild_id, pole_channel_id, daily_pole_time, notify_opening, ping_role_id, ping_mode
-                    FROM servers
-                    WHERE pole_channel_id IS NOT NULL
-                      AND notify_opening = 1
-                      AND daily_pole_time IS NOT NULL
-                ''')
-                servers = await cursor.fetchall()
-        except Exception as e:
-            log.error(f"❌ [Watcher] Error consultando servidores: {e}")
-            return
-        
-        for server in servers:
-            guild_id = server['guild_id']
-            channel_id = server['pole_channel_id']
-            daily_time = server['daily_pole_time']
-            
-            notif_key = (guild_id, today_str)
-            
-            # Si ya notificamos hoy, saltar
-            if notif_key in self._notified_openings:
-                continue
-            
-            # Parsear hora de apertura
-            try:
-                h, m, s = [int(x) for x in str(daily_time).split(':')]
-                opening_time = _opening_time_for_day(now, h, m, s)
-            except Exception:
-                continue
-            
-            # Si la hora aún no llegó, hay que esperar (el scheduler debería encargarse)
-            if now < opening_time:
-                # Verificar si el scheduler está activo para este guild
-                scheduled_task = self._scheduled_notifications.get(guild_id)
-                if scheduled_task is None or scheduled_task.done() or scheduled_task.cancelled():
-                    # El task no existe o murió, reprogramar
-                    log.warning(f"⚠️ [Watcher] Reprogramando notificación para guild {guild_id} (task perdido)")
-                    await self._schedule_single_notification(
-                        guild_id, channel_id, opening_time,
-                        server['ping_role_id'], server['ping_mode'], today_str
-                    )
-                continue
-            
-            # La hora ya pasó y no hemos notificado - NOTIFICACIÓN PERDIDA
-            # Calcular cuánto tiempo pasó desde la apertura
-            minutes_since_opening = (now - opening_time).total_seconds() / 60
-            
-            # Solo enviar si no han pasado más de 60 minutos (evitar spam tardío)
-            if minutes_since_opening > 60:
-                # Demasiado tarde, marcar como notificado para no reintentar
-                self._notified_openings.add(notif_key)
-                log.warning(f"⚠️ [Watcher] Guild {guild_id}: Notificación descartada (>{int(minutes_since_opening)}m tarde)")
-                continue
-            
-            # Dar un margen de 30 segundos después de la apertura antes de intervenir
-            # Esto evita conflictos con el scheduler normal que podría estar ejecutándose
-            if minutes_since_opening < 0.5:
-                continue
-            
-            # Verificar si hay un task activo que quizás aún no terminó
-            scheduled_task = self._scheduled_notifications.get(guild_id)
-            if scheduled_task and not scheduled_task.done() and not scheduled_task.cancelled():
-                # Hay un task pendiente, darle unos segundos más
-                continue
-            
-            # ENVIAR NOTIFICACIÓN PERDIDA (independientemente de si ya hay poles)
-            # Si la gente ya poleó sin notificación, al menos avisamos para futuros participantes
-            log.info(f"🔔 [Watcher] Enviando notificación perdida para guild {guild_id} ({int(minutes_since_opening)}m tarde)")
-            
-            try:
-                # ⚠️ NO resetear rachas si ya pasó tiempo desde la apertura
-                # Los usuarios pueden haber poleado ya, resetear ahora sería injusto
-                # El reset de rachas solo debe ocurrir JUSTO ANTES de la apertura programada
-                # Si hay outage y recuperamos tarde, las rachas ya están en su estado correcto
-                
-                # Marcar ANTES de enviar → evita race condition con el scheduler
-                self._notified_openings.add(notif_key)
-                
-                # Enviar notificación
-                await self.send_opening_notification(
-                    guild_id, channel_id,
-                    server['ping_role_id'], server['ping_mode']
-                )
-                log.info(f"✅ [Watcher] Notificación enviada para guild {guild_id}")
-            except Exception as e:
-                log.error(f"❌ [Watcher] Error enviando notificación para guild {guild_id}: {e}")
-    
-    @opening_notification_watcher.before_loop
-    async def before_opening_watcher(self):
-        """Esperar a que el bot esté listo"""
-        await self.bot.wait_until_ready()
-        # Pequeña espera para que el scheduler principal tenga tiempo de programar
-        await asyncio.sleep(5)
-
     # ==================== RESUMEN DE MEDIANOCHE ====================
-    @tasks.loop(minutes=5)
-    async def midnight_summary_check(self):
-        """Enviar resumen a las 00:00 mostrando quién NO hizo pole y avisar que pierden racha"""
-        now = datetime.now(LOCAL_TZ)
-
-        # Solo ejecutar entre 00:00 y 00:15
-        if not (now.hour == 0 and now.minute < 15):
-            return
-
-        today_key = now.date().isoformat()
-
-        # Iterar por servidores activos
-        async with self.db.get_connection() as conn:
-            cursor = await conn.execute('''
-                SELECT guild_id, pole_channel_id
-                FROM servers
-                WHERE pole_channel_id IS NOT NULL
-            ''')
-            servers = await cursor.fetchall()
-        
-        for server in servers:
-            guild_id = server['guild_id']
-            channel_id = server['pole_channel_id']
-            summary_key = (guild_id, today_key)
-            
-            # Evitar duplicados
-            if summary_key in self._midnight_summaries_sent:
-                continue
-            
-            await self.send_midnight_summary(guild_id, channel_id)
-            self._midnight_summaries_sent.add(summary_key)
-            
-            # Limpiar summaries antiguos
-            yesterday_key = (now - timedelta(days=1)).date().isoformat()
-            self._midnight_summaries_sent = {
-                (gid, date) for gid, date in self._midnight_summaries_sent
-                if date >= yesterday_key
-            }
     
-    @midnight_summary_check.before_loop
-    async def before_midnight_check(self):
-        """Esperar a que el bot esté listo"""
-        await self.bot.wait_until_ready()
-    
-    async def send_midnight_summary(self, guild_id: int, channel_id: int):
-        """Enviar resumen de medianoche con estadísticas del día anterior"""
+    async def send_midnight_summary(self, guild_id: int, channel_id: int, summary_date: Optional[str] = None):
+        """Enviar resumen diario para la fecha lógica indicada (YYYY-MM-DD)."""
         guild = self.bot.get_guild(guild_id)
         if not guild:
             return
@@ -3500,10 +2803,12 @@ class PoleCog(commands.Cog):
         if not channel or not isinstance(channel, discord.TextChannel):
             return
         
-        # Obtener poles del día ANTERIOR (ya es medianoche del nuevo día)
-        yesterday = datetime.now(LOCAL_TZ) - timedelta(days=1)
-        today = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
-        yesterday_date = yesterday.strftime('%Y-%m-%d')
+        # Obtener poles del día a resumir (por defecto: ayer en horario local)
+        if summary_date:
+            yesterday_date = summary_date
+        else:
+            yesterday = datetime.now(LOCAL_TZ) - timedelta(days=1)
+            yesterday_date = yesterday.strftime('%Y-%m-%d')
         async with self.db.get_connection() as conn:
             cursor = await conn.execute('''
                 SELECT

@@ -2,8 +2,11 @@
 Sistema de Puntuación y Rachas (v1.0 - Hora Aleatoria + Seasons)
 Calcula puntos, multiplicadores, clasifica por retraso y gestiona rachas
 """
-from typing import Tuple, Optional, Dict, Union
-from datetime import datetime
+from typing import TYPE_CHECKING, Literal, Tuple, Optional, Dict, Union, TypedDict
+from datetime import datetime, timedelta
+
+if TYPE_CHECKING:
+    from utils.scheduler import PolePhase
 
 try:
     from zoneinfo import ZoneInfo
@@ -87,8 +90,35 @@ POINTS_CONFIG = {
     'critical': 20.0,   # 0–15 min (ultra rápido)
     'fast': 15.0,       # 15 min–3h (rápido)
     'normal': 10.0,     # 3h–00:00 (mismo día)
+    'late': 10.0,       # apertura cruzó de día por retraso operativo
     'marranero': 5.0    # después 00:00 (día siguiente)
 }
+
+PHASE_CERRADA_ESPERANDO_APERTURA = 'CERRADA_ESPERANDO_APERTURA'
+PHASE_ABIERTA_JUGANDO = 'ABIERTA_JUGANDO'
+
+PoleType = Literal['critical', 'fast', 'normal', 'late', 'marranero']
+
+
+class PoleAttemptEvaluation(TypedDict):
+    pole_type: PoleType
+    delay_minutes: int
+    phase: str
+    use_previous_day_pole_date: bool
+    pole_date_offset_days: int
+    effective_pole_date: str
+
+
+def _ensure_local_aware(dt: datetime, field_name: str) -> datetime:
+    """Validar datetime aware y normalizar a Europe/Madrid."""
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        raise ValueError(f"{field_name} must be timezone-aware ({LOCAL_TZ})")
+    return dt.astimezone(LOCAL_TZ)
+
+
+def _phase_to_str(phase: 'PolePhase') -> str:
+    """Extraer valor de fase sin acoplar runtime a imports opcionales."""
+    return str(getattr(phase, 'value', phase))
 
 # Cuotas por categoría: porcentaje de usuarios (sin bots) que pueden reclamar cada tipo
 # Ejemplo: servidor de 100 usuarios → crítico max 10, veloz max 30
@@ -203,6 +233,57 @@ def classify_delay(delay_minutes: int, is_next_day: bool = False) -> str:
     # Desde 3h hasta fin del día (00:00) es normal
     return 'normal'
 
+
+def evaluate_pole_attempt(
+    user_time: datetime,
+    opening_time: datetime,
+    phase: 'PolePhase'
+) -> PoleAttemptEvaluation:
+    """
+    Evaluar un intento de pole en base a fase y tiempos aware en LOCAL_TZ.
+
+    Reglas:
+    - CERRADA_ESPERANDO_APERTURA -> siempre marranero y pole_date del día anterior.
+    - ABIERTA_JUGANDO -> clasificar por delay en critical/fast/normal/late.
+    """
+    user_time_local = _ensure_local_aware(user_time, 'user_time')
+    opening_time_local = _ensure_local_aware(opening_time, 'opening_time')
+    phase_value = _phase_to_str(phase)
+
+    delay_minutes = int((user_time_local - opening_time_local).total_seconds() // 60)
+
+    if phase_value == PHASE_CERRADA_ESPERANDO_APERTURA:
+        effective_date = (user_time_local - timedelta(days=1)).date().isoformat()
+        return {
+            'pole_type': 'marranero',
+            'delay_minutes': delay_minutes,
+            'phase': phase_value,
+            'use_previous_day_pole_date': True,
+            'pole_date_offset_days': -1,
+            'effective_pole_date': effective_date,
+        }
+
+    if phase_value != PHASE_ABIERTA_JUGANDO:
+        raise ValueError(f"Unsupported PolePhase: {phase_value}")
+
+    if user_time_local.date() > opening_time_local.date():
+        pole_type: PoleType = 'late'
+    else:
+        base_type = classify_delay(delay_minutes, is_next_day=False)
+        if base_type in ('critical', 'fast', 'normal'):
+            pole_type = base_type
+        else:
+            pole_type = 'normal'
+
+    return {
+        'pole_type': pole_type,
+        'delay_minutes': delay_minutes,
+        'phase': phase_value,
+        'use_previous_day_pole_date': False,
+        'pole_date_offset_days': 0,
+        'effective_pole_date': user_time_local.date().isoformat(),
+    }
+
 def get_pole_emoji(pole_type: str) -> str:
     """
     Obtener el emoji correspondiente al tipo de pole
@@ -217,6 +298,7 @@ def get_pole_emoji(pole_type: str) -> str:
         'critical': '💎',
         'fast': '⚡',
         'normal': '🏁',
+        'late': '⏰',
         'marranero': '🐷'
     }
     return emojis.get(pole_type, '🏁')
@@ -239,6 +321,7 @@ def get_pole_name(pole_type: str, guild_id: Optional[int] = None) -> str:
             'critical': t('pole.type.critical', guild_id),
             'fast': t('pole.type.fast', guild_id),
             'normal': t('pole.type.normal', guild_id),
+            'late': t('pole.type.late', guild_id),
             'marranero': t('pole.type.marranero', guild_id)
         }
         return names.get(pole_type, t('pole.type.normal', guild_id))
@@ -248,6 +331,7 @@ def get_pole_name(pole_type: str, guild_id: Optional[int] = None) -> str:
             'critical': 'CRÍTICA',
             'fast': 'VELOZ',
             'normal': 'POLE',
+            'late': 'TARDE',
             'marranero': 'MARRANERO'
         }
         return names.get(pole_type, 'POLE')
