@@ -28,3 +28,4 @@ scripts/*
 !scripts/migrate_seasons.py
 !scripts/restore_streaks.py
 .venv/
+bot.log

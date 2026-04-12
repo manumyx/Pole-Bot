@@ -384,7 +384,7 @@ class Database:
 
                 # Verificar integridad
                 cursor = await conn.execute('PRAGMA foreign_key_check')
-                integrity = await cursor.fetchall()
+                integrity = list(await cursor.fetchall())
                 if integrity:
                     self.log.warning(f"   ⚠️ Advertencia: {len(integrity)} violaciones de foreign key detectadas")
                     for violation in list(integrity)[:5]:
@@ -911,8 +911,8 @@ class Database:
                 'marranero_poles': stats['marranero_poles'] or 0,
                 'average_delay_minutes': stats['average_delay_minutes'] or 0.0,
                 'best_time_minutes': stats['best_time_minutes'] or 0,
-                'total_points': points_data['total_points'] or 0.0,
-                'total_poles': points_data['total_poles'] or 0
+                'total_points': (points_data['total_points'] if points_data else 0.0) or 0.0,
+                'total_poles': (points_data['total_poles'] if points_data else 0) or 0
             }
 
     # ==================== MÉTODOS DE POLES ====================
@@ -1039,7 +1039,7 @@ class Database:
                   AND pole_date = ?
             ''', (user_id, guild_id, date_str))
             row = await cursor.fetchone()
-            return row[0] > 0
+            return bool(row and row[0] > 0)
 
     # ==================== MÉTODOS DE LEADERBOARD ====================
 
@@ -1335,7 +1335,7 @@ class Database:
             else:
                 cursor = await conn.execute('SELECT COUNT(DISTINCT user_id) FROM poles')
             row = await cursor.fetchone()
-            return row[0]
+            return int(row[0]) if row else 0
 
     async def get_global_server_season_leaderboard(self, season_id: str, limit: int = 10) -> List[Dict]:
         """Obtener leaderboard global de servidores representados en una season"""
@@ -1379,7 +1379,7 @@ class Database:
                     ORDER BY season_points DESC
                 ''', (guild_id, season_id))
 
-                rankings = await cursor.fetchall()
+                rankings = list(await cursor.fetchall())
                 total_players = len(rankings)
 
                 for position, row in enumerate(rankings, start=1):
@@ -1549,30 +1549,30 @@ class Database:
 
             cursor = await conn.execute('SELECT COUNT(*) FROM users WHERE current_streak > 0')
             row = await cursor.fetchone()
-            streaks_not_reset = row[0]
+            streaks_not_reset = int(row[0]) if row else 0
             if streaks_not_reset > 0:
                 issues.append(f"{streaks_not_reset} usuarios tienen current_streak > 0 (deberían estar en 0)")
 
             cursor = await conn.execute('SELECT COUNT(*) FROM seasons WHERE is_active = 1')
             row = await cursor.fetchone()
-            active_count = row[0]
+            active_count = int(row[0]) if row else 0
             if active_count != 1:
                 issues.append(f"Hay {active_count} temporadas activas (debería ser 1)")
 
             cursor = await conn.execute('SELECT COUNT(*) FROM season_history WHERE season_id != ?', (season_id,))
             row = await cursor.fetchone()
-            stats['history_records'] = row[0]
+            stats['history_records'] = int(row[0]) if row else 0
 
             cursor = await conn.execute('SELECT COUNT(*) FROM user_badges')
             row = await cursor.fetchone()
-            stats['total_badges'] = row[0]
+            stats['total_badges'] = int(row[0]) if row else 0
 
             cursor = await conn.execute('''
                 SELECT COUNT(*) FROM season_stats
                 WHERE season_id = ? AND (season_points < 0 OR season_poles < 0)
             ''', (season_id,))
             row = await cursor.fetchone()
-            invalid_stats = row[0]
+            invalid_stats = int(row[0]) if row else 0
             if invalid_stats > 0:
                 issues.append(f"{invalid_stats} registros con valores negativos en season_stats")
 

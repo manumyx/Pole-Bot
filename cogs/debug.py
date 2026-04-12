@@ -19,13 +19,13 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from utils.database import Database
+from utils.database import Database, LOCAL_TZ
 from utils.scoring import (
     calculate_points, classify_delay, get_pole_emoji, get_pole_name,
     update_streak, get_rank_info, get_current_season,
     RANK_THRESHOLDS, RANK_BADGES, RANK_NAMES
 )
-from utils.i18n import t
+from utils.i18n import t, resolve_guild_language, set_cached_guild_language
 
 # Logger
 log = logging.getLogger('DebugCog')
@@ -80,6 +80,13 @@ class DebugCog(commands.Cog):
         self.bot = bot
         self.db = bot._db  # Instancia compartida de Database (creada en main.py)
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Resolver idioma por servidor para comandos slash del cog."""
+        if interaction.guild is not None:
+            lang = await resolve_guild_language(interaction.guild.id, self.db)
+            set_cached_guild_language(interaction.guild.id, lang)
+        return True
+
     debug = app_commands.Group(name="debug", description="Herramientas de depuración v2.0")
 
     # ==================== INFORMACIÓN Y DIAGNÓSTICO ====================
@@ -100,11 +107,10 @@ class DebugCog(commands.Cog):
         
         # ========== MODO 1: HISTORIAL DE USUARIO ==========
         if usuario:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                since = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-                
-                cursor.execute('''
+            async with self.db.get_connection() as conn:
+                since = (datetime.now(LOCAL_TZ) - timedelta(days=7)).strftime('%Y-%m-%d')
+
+                cursor = await conn.execute('''
                     SELECT id, DATE(user_time) as fecha, pole_type, points_earned, 
                            streak_at_time, delay_minutes
                     FROM poles
@@ -112,8 +118,8 @@ class DebugCog(commands.Cog):
                     ORDER BY user_time DESC
                     LIMIT 20
                 ''', (usuario.id, gid, since))
-                
-                poles = cursor.fetchall()
+
+                poles = await cursor.fetchall()
             
             if not poles:
                 await interaction.response.send_message(
@@ -125,7 +131,7 @@ class DebugCog(commands.Cog):
             embed = discord.Embed(
                 title=f"📜 Historial - {usuario.display_name}",
                 color=discord.Color.blue(),
-                timestamp=datetime.now()
+                timestamp=datetime.now(LOCAL_TZ)
             )
             
             lines = []
@@ -143,13 +149,13 @@ class DebugCog(commands.Cog):
             return
         
         # ========== MODO 2: INFO DEL SERVIDOR ==========
-        config = self.db.get_server_config(gid) or {}
+        config = await self.db.get_server_config(gid) or {}
         
         embed = discord.Embed(
             title=f"🔧 Información del Servidor",
             description=f"**{interaction.guild.name}**\nGuild ID: `{gid}`",
             color=discord.Color.blue(),
-            timestamp=datetime.now()
+            timestamp=datetime.now(LOCAL_TZ)
         )
         
         # Canal
@@ -163,9 +169,9 @@ class DebugCog(commands.Cog):
         
         if daily_time:
             try:
-                now = datetime.now()
+                now = datetime.now(LOCAL_TZ)
                 h, m, s = [int(x) for x in daily_time.split(':')]
-                opening = datetime(now.year, now.month, now.day, h, m, s)
+                opening = now.replace(hour=h, minute=m, second=s, microsecond=0)
                 
                 if now < opening:
                     delta = opening - now
@@ -196,7 +202,7 @@ class DebugCog(commands.Cog):
         )
         
         # Stats del día
-        today_poles = self.db.get_poles_today(gid)
+        today_poles = await self.db.get_poles_today(gid)
         total_members = sum(1 for m in interaction.guild.members if not m.bot)
         embed.add_field(
             name="📊 Hoy",
@@ -206,10 +212,9 @@ class DebugCog(commands.Cog):
         
         # Schema version
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1')
-                schema_row = cursor.fetchone()
+            async with self.db.get_connection() as conn:
+                cursor = await conn.execute('SELECT version FROM schema_metadata ORDER BY version DESC LIMIT 1')
+                schema_row = await cursor.fetchone()
                 schema_info = f"v{schema_row['version']}" if schema_row else "N/A"
         except:
             schema_info = "Error"
@@ -231,12 +236,12 @@ class DebugCog(commands.Cog):
         
         target = usuario or interaction.user
         gid = interaction.guild.id
-        now = datetime.now()
+        now = datetime.now(LOCAL_TZ)
         today_str = now.strftime('%Y-%m-%d')
         yesterday_str = (now - timedelta(days=1)).strftime('%Y-%m-%d')
         
-        config = self.db.get_server_config(gid)
-        user_data = self.db.get_user(target.id, gid)
+        config = await self.db.get_server_config(gid)
+        user_data = await self.db.get_user(target.id, gid)
         
         embed = discord.Embed(
             title=f"🔬 Diagnóstico: {target.display_name}",
@@ -260,21 +265,20 @@ class DebugCog(commands.Cog):
             embed.add_field(name="👤 Datos", value="⚠️ Primera vez", inline=True)
         
         # ========== POLE HOY/AYER ==========
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        async with self.db.get_connection() as conn:
+            cursor = await conn.execute('''
                 SELECT pole_type, user_time, delay_minutes, points_earned
                 FROM poles WHERE user_id = ? AND guild_id = ? AND pole_date = ?
                 ORDER BY user_time DESC LIMIT 1
             ''', (target.id, gid, today_str))
-            pole_today = cursor.fetchone()
+            pole_today = await cursor.fetchone()
             
-            cursor.execute('''
+            cursor = await conn.execute('''
                 SELECT pole_type FROM poles
                 WHERE user_id = ? AND guild_id = ? AND pole_date = ?
                 ORDER BY user_time DESC LIMIT 1
             ''', (target.id, gid, yesterday_str))
-            pole_yesterday = cursor.fetchone()
+            pole_yesterday = await cursor.fetchone()
         
         pole_info = []
         if pole_today:
@@ -305,7 +309,7 @@ class DebugCog(commands.Cog):
         if daily_time:
             try:
                 h, m, s = [int(x) for x in daily_time.split(':')]
-                opening = datetime(now.year, now.month, now.day, h, m, s)
+                opening = now.replace(hour=h, minute=m, second=s, microsecond=0)
                 if now < opening:
                     mins = int((opening-now).total_seconds()//60)
                     checks.append(f"⏳ Abre en {mins}min")
@@ -324,7 +328,7 @@ class DebugCog(commands.Cog):
         else:
             checks.append("✅ Sin pole hoy")
         
-        global_today = self.db.get_user_pole_on_date_global(target.id, today_str)
+        global_today = await self.db.get_user_pole_on_date_global(target.id, today_str)
         if global_today and int(global_today.get('guild_id', 0)) != gid:
             checks.append(f"🌍 Pole en otro server")
             can_pole = False
@@ -362,19 +366,27 @@ class DebugCog(commands.Cog):
         """
         UNIFICA: set_opening + force_generate + open_now
         """
+        await interaction.response.defer(ephemeral=True)
+
         if not interaction.guild:
-            await interaction.response.send_message("❌ Solo en servidores.", ephemeral=True)
+            await interaction.followup.send("❌ Solo en servidores.", ephemeral=True)
             return
         
         gid = interaction.guild.id
         
         # ========== ABRIR AHORA ==========
         if accion == "now":
-            now = datetime.now()
+            log.info("Debug pole_time: Paso 1 (now) - preparando hora actual")
+            now = datetime.now(LOCAL_TZ)
             time_str = now.strftime("%H:%M:%S")
-            self.db.set_daily_pole_time(gid, time_str)
+
+            log.info("Debug pole_time: Paso 2 (now) - antes set_daily_pole_time gid=%s time=%s", gid, time_str)
+            await self.db.set_daily_pole_time(gid, time_str)
+            log.info("Debug pole_time: Paso 3 (now) - despues set_daily_pole_time")
             
-            cfg = self.db.get_server_config(gid)
+            log.info("Debug pole_time: Paso 4 (now) - antes get_server_config gid=%s", gid)
+            cfg = await self.db.get_server_config(gid)
+            log.info("Debug pole_time: Paso 5 (now) - despues get_server_config cfg_encontrada=%s", bool(cfg))
             if cfg and cfg.get('notify_opening', 1) and cfg.get('pole_channel_id'):
                 pole_cog = self.bot.get_cog('PoleCog')
                 send_fn = getattr(pole_cog, 'send_opening_notification', None) if pole_cog else None
@@ -388,7 +400,7 @@ class DebugCog(commands.Cog):
                     except Exception as e:
                         log.error(f"⚠️ Error enviando notificación: {e}")
             
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ Pole abierto AHORA ({time_str})\n"
                 f"💬 Escribe **pole** en el canal configurado.",
                 ephemeral=True
@@ -397,7 +409,7 @@ class DebugCog(commands.Cog):
         # ========== HORA CUSTOM ==========
         elif accion == "custom":
             if hora is None:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ Debes especificar `hora` (0-23) para acción 'custom'",
                     ephemeral=True
                 )
@@ -407,11 +419,11 @@ class DebugCog(commands.Cog):
                 minuto = 0
             
             if minuto < 0 or minuto > 59:
-                await interaction.response.send_message("❌ Minuto debe estar entre 0-59", ephemeral=True)
+                await interaction.followup.send("❌ Minuto debe estar entre 0-59", ephemeral=True)
                 return
             
             time_str = f"{hora:02d}:{minuto:02d}:00"
-            self.db.set_daily_pole_time(gid, time_str)
+            await self.db.set_daily_pole_time(gid, time_str)
             
             # Reprogramar notificación
             try:
@@ -424,15 +436,13 @@ class DebugCog(commands.Cog):
             except Exception as e:
                 log.error(f"⚠️ Error reprogramando: {e}")
             
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ Hora custom configurada: **{time_str}**",
                 ephemeral=True
             )
         
         # ========== REGENERAR ==========
         elif accion == "regenerate":
-            await interaction.response.defer(ephemeral=True)
-            
             try:
                 pole_cog = self.bot.get_cog('PoleCog')
                 if not pole_cog:
@@ -447,7 +457,7 @@ class DebugCog(commands.Cog):
                         if inspect.iscoroutine(result):
                             await result  # type: ignore
                 
-                new_time = self.db.get_daily_pole_time(gid)
+                new_time = await self.db.get_daily_pole_time(gid)
                 
                 await interaction.followup.send(
                     f"✅ Hora regenerada: **{new_time}**\n"
@@ -487,17 +497,17 @@ class DebugCog(commands.Cog):
             return
         
         gid = interaction.guild.id
-        user_data = self.db.get_user(usuario.id, gid)
+        user_data = await self.db.get_user(usuario.id, gid)
         
         # Crear usuario si no existe
         if not user_data:
-            self.db.create_user(usuario.id, gid, usuario.name)
-            user_data = self.db.get_user(usuario.id, gid) or {}
+            await self.db.create_user(usuario.id, gid, usuario.name)
+            user_data = await self.db.get_user(usuario.id, gid) or {}
         
         embed = discord.Embed(
             title="✏️ Usuario Modificado",
             color=discord.Color.orange(),
-            timestamp=datetime.now()
+            timestamp=datetime.now(LOCAL_TZ)
         )
         embed.add_field(name="👤 Usuario", value=usuario.mention, inline=False)
         
@@ -515,10 +525,10 @@ class DebugCog(commands.Cog):
             
             # Añadir a season_stats
             season_id = get_current_season()
-            season_stats = self.db.get_season_stats(usuario.id, gid, season_id)
+            season_stats = await self.db.get_season_stats(usuario.id, gid, season_id)
             old_season = float(season_stats.get("season_points", 0.0)) if season_stats else 0.0
             new_season = old_season + puntos
-            self.db.update_season_stats(usuario.id, gid, season_id, season_points=new_season)
+            await self.db.update_season_stats(usuario.id, gid, season_id, season_points=new_season)
             
             embed.add_field(
                 name="💰 Puntos Añadidos",
@@ -539,7 +549,7 @@ class DebugCog(commands.Cog):
                 return
             
             # Obtener global_user (rachas son globales desde v5)
-            global_user = self.db.get_global_user(usuario.id)
+            global_user = await self.db.get_global_user(usuario.id)
             if not global_user:
                 await interaction.response.send_message("❌ Usuario no encontrado en global_users", ephemeral=True)
                 return
@@ -549,7 +559,7 @@ class DebugCog(commands.Cog):
             new_best = max(old_best, racha)
             
             # Rachas se guardan en global_users, no en users
-            self.db.update_global_user(usuario.id, current_streak=racha, best_streak=new_best)
+            await self.db.update_global_user(usuario.id, current_streak=racha, best_streak=new_best)
             
             embed.add_field(name="🔥 Racha (Global)", value=f"{old_streak} → **{racha}**", inline=True)
             embed.add_field(name="🏆 Mejor", value=f"{old_best} → **{new_best}**", inline=True)
@@ -567,14 +577,14 @@ class DebugCog(commands.Cog):
                 return
             
             old_date = user_data.get('last_pole_date', 'Nunca')
-            self.db.update_user(usuario.id, gid, last_pole_date=valor)
+            await self.db.update_user(usuario.id, gid, last_pole_date=valor)
             
             embed.add_field(name="📅 Último Pole", value=f"{old_date} → **{valor}**", inline=False)
         
         # ========== RESTORE STREAK ==========
         elif tipo == "restore_streak":
             # Obtener racha actual de global_users (donde se guardan las rachas)
-            global_user = self.db.get_global_user(usuario.id)
+            global_user = await self.db.get_global_user(usuario.id)
             if not global_user:
                 await interaction.response.send_message(
                     f"❌ {usuario.mention} no está registrado globalmente.",
@@ -592,9 +602,9 @@ class DebugCog(commands.Cog):
                 )
                 return
             
-            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            yesterday = (datetime.now(LOCAL_TZ) - timedelta(days=1)).strftime('%Y-%m-%d')
             # Actualizar en global_users (donde están las rachas)
-            self.db.update_global_user(usuario.id, current_streak=best_streak, last_pole_date=yesterday)
+            await self.db.update_global_user(usuario.id, current_streak=best_streak, last_pole_date=yesterday)
             
             embed.add_field(name="♻️ Racha Restaurada", value=f"{old_streak} → **{best_streak}**", inline=True)
             embed.add_field(name="📅 Último Pole", value=f"Ajustado a {yesterday}", inline=True)
@@ -619,7 +629,7 @@ class DebugCog(commands.Cog):
         target = usuario or interaction.user
         gid = interaction.guild.id
         
-        opening_str = self.db.get_daily_pole_time(gid)
+        opening_str = await self.db.get_daily_pole_time(gid)
         if not opening_str:
             await interaction.response.send_message(
                 "❌ Sin hora configurada. Usa `/debug pole_time`",
@@ -627,19 +637,19 @@ class DebugCog(commands.Cog):
             )
             return
         
-        now = datetime.now()
+        now = datetime.now(LOCAL_TZ)
         h, m, s = [int(x) for x in opening_str.split(':')]
-        opening_time = datetime(now.year, now.month, now.day, h, m, s)
+        opening_time = now.replace(hour=h, minute=m, second=s, microsecond=0)
         user_time = opening_time + timedelta(minutes=delay_minutos)
         is_next_day = user_time.date() > opening_time.date()
         
         pole_date = opening_time.strftime('%Y-%m-%d') if is_next_day else user_time.strftime('%Y-%m-%d')
         pole_type = classify_delay(delay_minutos, is_next_day)
         
-        user_data = self.db.get_user(target.id, gid)
+        user_data = await self.db.get_user(target.id, gid)
         if not user_data:
-            self.db.create_user(target.id, gid, target.name)
-            user_data = self.db.get_user(target.id, gid) or {}
+            await self.db.create_user(target.id, gid, target.name)
+            user_data = await self.db.get_user(target.id, gid) or {}
         
         current_streak = int(user_data.get("current_streak", 0))
         last_pole_date = user_data.get("last_pole_date")
@@ -648,7 +658,7 @@ class DebugCog(commands.Cog):
         base, mult, total = calculate_points(pole_type, new_streak)
         
         # Guardar pole
-        self.db.save_pole(
+        await self.db.save_pole(
             user_id=target.id, guild_id=gid,
             opening_time=opening_time, user_time=user_time,
             delay_minutes=delay_minutos, pole_type=pole_type,
@@ -672,7 +682,7 @@ class DebugCog(commands.Cog):
         elif pole_type == "marranero":
             fields["marranero_poles"] = int(user_data.get("marranero_poles", 0)) + 1
         
-        self.db.update_user(target.id, gid, **fields)
+        await self.db.update_user(target.id, gid, **fields)
         
         # Respuesta
         emoji = get_pole_emoji(pole_type)
@@ -711,17 +721,16 @@ class DebugCog(commands.Cog):
         target = usuario or interaction.user
         gid = interaction.guild.id
         
-        self.db.update_user(target.id, gid, last_pole_date=None)
+        await self.db.update_user(target.id, gid, last_pole_date=None)
         
-        today = datetime.now().strftime('%Y-%m-%d')
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        today = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
+        async with self.db.get_connection() as conn:
+            cursor = await conn.execute('''
                 DELETE FROM poles 
                 WHERE user_id = ? AND guild_id = ? AND DATE(created_at) = ?
             ''', (target.id, gid, today))
             deleted = cursor.rowcount
-            conn.commit()
+            await conn.commit()
         
         await interaction.response.send_message(
             f"✅ {target.mention} reseteado\n"
@@ -767,16 +776,15 @@ class DebugCog(commands.Cog):
             return
         
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT season_id FROM seasons WHERE is_active = 1')
-                row = cursor.fetchone()
+            async with self.db.get_connection() as conn:
+                cursor = await conn.execute('SELECT season_id FROM seasons WHERE is_active = 1')
+                row = await cursor.fetchone()
                 current_active = row[0] if row else "Ninguna"
             
             embed = discord.Embed(
                 title="🧪 Test de Migración",
                 color=discord.Color.orange() if dry_run else discord.Color.red(),
-                timestamp=datetime.now()
+                timestamp=datetime.now(LOCAL_TZ)
             )
             
             embed.add_field(
@@ -795,10 +803,10 @@ class DebugCog(commands.Cog):
                 if current_active == target_season:
                     embed.add_field(name="ℹ️ Resultado", value="Ya estamos en la temporada objetivo", inline=False)
                 else:
-                    with self.db.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute('SELECT COUNT(*) FROM season_stats WHERE season_id = ?', (current_active,))
-                        stats_count = cursor.fetchone()[0]
+                    async with self.db.get_connection() as conn:
+                        cursor = await conn.execute('SELECT COUNT(*) FROM season_stats WHERE season_id = ?', (current_active,))
+                        stats_row = await cursor.fetchone()
+                        stats_count = stats_row[0] if stats_row else 0
                     
                     actions = [
                         f"✅ Finalizar **{current_active}**",
@@ -815,7 +823,7 @@ class DebugCog(commands.Cog):
             else:
                 embed.add_field(name="🚨 MODO REAL", value="Migración REAL (no se puede deshacer)", inline=False)
                 
-                migrated = self.db.migrate_season(target_season, force=False)
+                migrated = await self.db.migrate_season(target_season, force=False)
                 
                 if migrated:
                     embed.add_field(
@@ -824,7 +832,7 @@ class DebugCog(commands.Cog):
                         inline=False
                     )
                     
-                    verification = self.db.verify_migration_integrity(target_season)
+                    verification = await self.db.verify_migration_integrity(target_season)
                     
                     if verification['is_valid']:
                         embed.add_field(name="✅ Verificación", value="Todo OK", inline=False)
@@ -868,14 +876,14 @@ class DebugCog(commands.Cog):
         try:
             # Validar formato de fecha
             try:
-                target_date = datetime.strptime(fecha, '%Y-%m-%d')
+                target_date = datetime.strptime(fecha, '%Y-%m-%d').replace(tzinfo=LOCAL_TZ)
                 fecha_str = target_date.strftime('%Y-%m-%d')
             except ValueError:
                 await interaction.followup.send("❌ Formato de fecha inválido. Usa YYYY-MM-DD", ephemeral=True)
                 return
             
             # No permitir fechas futuras
-            if target_date.date() > datetime.now().date():
+            if target_date.date() > datetime.now(LOCAL_TZ).date():
                 await interaction.followup.send("❌ No puedes compensar fechas futuras", ephemeral=True)
                 return
             
@@ -883,12 +891,11 @@ class DebugCog(commands.Cog):
             day_before = (target_date - timedelta(days=1)).strftime('%Y-%m-%d')
             
             # ========== IDENTIFICAR USUARIOS AFECTADOS GLOBALMENTE ==========
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
+            async with self.db.get_connection() as conn:
                 
                 # Obtener TODOS los usuarios que hicieron pole el día anterior (cualquier servidor)
                 # IMPORTANTE: Usar streak_at_time del pole del día anterior, NO current_streak
-                cursor.execute('''
+                cursor = await conn.execute('''
                     SELECT DISTINCT p.user_id, gu.username, MAX(p.streak_at_time) as streak_before
                     FROM poles p
                     JOIN global_users gu ON p.user_id = gu.user_id
@@ -896,7 +903,7 @@ class DebugCog(commands.Cog):
                     GROUP BY p.user_id
                 ''', (day_before,))
                 
-                users_with_activity_before = cursor.fetchall()
+                users_with_activity_before = await cursor.fetchall()
                 
                 # De esos, filtrar quienes NO hicieron pole en la fecha del downtime
                 affected_global = []
@@ -904,17 +911,18 @@ class DebugCog(commands.Cog):
                     user_id = user_data['user_id']
                     
                     # Verificar si hizo pole en la fecha afectada (en cualquier servidor)
-                    cursor.execute('''
+                    cursor = await conn.execute('''
                         SELECT COUNT(*) FROM poles
                         WHERE user_id = ? AND pole_date = ?
                     ''', (user_id, fecha_str))
                     
-                    pole_count = cursor.fetchone()[0]
+                    pole_row = await cursor.fetchone()
+                    pole_count = pole_row[0] if pole_row else 0
                     
                     if pole_count == 0:
                         # Este usuario NO hizo pole ese día → afectado
                         # Obtener en qué servidores estaba activo (todos los servidores recientes)
-                        cursor.execute('''
+                        cursor = await conn.execute('''
                             SELECT DISTINCT guild_id
                             FROM poles
                             WHERE user_id = ?
@@ -922,7 +930,8 @@ class DebugCog(commands.Cog):
                             ORDER BY created_at DESC
                         ''', (user_id,))
                         
-                        active_guilds = [row[0] for row in cursor.fetchall()]
+                        active_guild_rows = await cursor.fetchall()
+                        active_guilds = [row[0] for row in active_guild_rows]
                         
                         # Usar la racha que tenía en el pole del día anterior
                         affected_global.append({
@@ -937,7 +946,7 @@ class DebugCog(commands.Cog):
                     title="ℹ️ Sin Usuarios Afectados",
                     description=f"No hay usuarios que necesiten compensación para **{fecha_str}**",
                     color=discord.Color.blue(),
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(LOCAL_TZ)
                 )
                 embed.set_footer(text="No se encontraron rachas perdidas por downtime")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -997,21 +1006,21 @@ class DebugCog(commands.Cog):
                     poles_created = 0
                     for guild_id in valid_guilds:
                         # ✅ VERIFICAR DUPLICADOS
-                        with self.db.get_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute('''
+                        async with self.db.get_connection() as conn:
+                            cursor = await conn.execute('''
                                 SELECT COUNT(*) FROM poles
                                 WHERE user_id = ? AND guild_id = ? AND pole_date = ?
                             ''', (user_id, guild_id, fecha_str))
                             
-                            existing = cursor.fetchone()[0]
+                            existing_row = await cursor.fetchone()
+                            existing = existing_row[0] if existing_row else 0
                             
                             if existing > 0:
                                 log.warning(f"Pole ya existe para user {user_id} en guild {guild_id} fecha {fecha_str}, saltando...")
                                 continue
                             
                             # Insertar pole (sin username ni season_id, que no existen en la tabla)
-                            cursor.execute('''
+                            await conn.execute('''
                                 INSERT INTO poles (
                                     user_id, guild_id, opening_time, user_time,
                                     delay_minutes, pole_date, pole_type, 
@@ -1022,7 +1031,7 @@ class DebugCog(commands.Cog):
                                 180,  # 3 horas (normal range)
                                 fecha_str, 'normal', total_points, streak
                             ))
-                            conn.commit()
+                            await conn.commit()
                         
                         poles_created += 1
                         total_poles_created += 1
@@ -1034,12 +1043,12 @@ class DebugCog(commands.Cog):
                     
                     # ✅ Actualizar racha GLOBAL (solo si se creó al menos 1 pole)
                     new_streak = streak + 1
-                    self.db.update_global_user(user_id, current_streak=new_streak)
+                    await self.db.update_global_user(user_id, current_streak=new_streak)
                     
                     # Actualizar stats de temporada para cada servidor donde se creó pole
                     for guild_id in valid_guilds:
                         # Obtener stats actuales de la temporada
-                        season_stats = self.db.get_season_stats(user_id, guild_id, current_season)
+                        season_stats = await self.db.get_season_stats(user_id, guild_id, current_season)
                         
                         if season_stats:
                             # Actualizar existente
@@ -1049,7 +1058,7 @@ class DebugCog(commands.Cog):
                                 'season_normal': season_stats['season_normal'] + 1,
                                 'season_best_streak': max(season_stats['season_best_streak'], new_streak)
                             }
-                            self.db.update_season_stats(user_id, guild_id, current_season, **season_update)
+                            await self.db.update_season_stats(user_id, guild_id, current_season, **season_update)
                         else:
                             # Crear nueva entrada
                             season_data = {
@@ -1058,7 +1067,7 @@ class DebugCog(commands.Cog):
                                 'season_normal': 1,
                                 'season_best_streak': new_streak
                             }
-                            self.db.update_season_stats(user_id, guild_id, current_season, **season_data)
+                            await self.db.update_season_stats(user_id, guild_id, current_season, **season_data)
                     
                     compensated_users.append({
                         'user_id': user_id,
@@ -1080,7 +1089,7 @@ class DebugCog(commands.Cog):
                     f"**Poles a crear:** {total_poles_created}"
                 ),
                 color=discord.Color.green() if not dry_run else discord.Color.orange(),
-                timestamp=datetime.now()
+                timestamp=datetime.now(LOCAL_TZ)
             )
             
             # Lista de usuarios
@@ -1118,13 +1127,14 @@ class DebugCog(commands.Cog):
                 # ========== ENVIAR MENSAJE DE DISCULPA EN TODOS LOS CANALES ==========
                 messages_sent = 0
                 for guild_id in guilds_affected:
-                    config = self.db.get_server_config(guild_id)
+                    config = await self.db.get_server_config(guild_id)
                     if config and config.get('pole_channel_id'):
                         channel = self.bot.get_channel(config['pole_channel_id'])
                         if channel and isinstance(channel, discord.TextChannel):
                             try:
                                 # Obtener idioma del servidor
                                 lang = config.get('language', 'es')
+                                set_cached_guild_language(guild_id, str(lang))
                                 
                                 # Contar cuántos usuarios fueron compensados en ESTE servidor
                                 users_in_guild = sum(1 for u in compensated_users if guild_id in u.get('guilds', []))
@@ -1136,7 +1146,7 @@ class DebugCog(commands.Cog):
                                                 count=len(compensated_users), 
                                                 fire=FIRE),
                                     color=discord.Color.gold(),
-                                    timestamp=datetime.now()
+                                    timestamp=datetime.now(LOCAL_TZ)
                                 )
                                 apology_embed.set_footer(text=t('compensation.apology_footer', guild_id, count=len(compensated_users)))
                                 
@@ -1191,7 +1201,7 @@ class DebugCog(commands.Cog):
             target_guild_id = int(guild_id) if guild_id else interaction.guild.id
             
             # 1. Obtener datos globales del usuario
-            global_user = self.db.get_or_create_global_user(usuario.id, usuario.name)
+            global_user = await self.db.get_or_create_global_user(usuario.id, usuario.name)
             current_streak = global_user['current_streak'] if global_user else 0
             best_streak = global_user['best_streak'] if global_user else 0
             
@@ -1205,7 +1215,7 @@ class DebugCog(commands.Cog):
                 return
             
             # 2. Obtener historial de fechas de poles (ordenadas DESC)
-            pole_dates = self.db.get_user_pole_dates_global(usuario.id, limit=120)
+            pole_dates = await self.db.get_user_pole_dates_global(usuario.id, limit=120)
             pole_dates_set = set(pole_dates)
             
             if not pole_dates:
@@ -1284,7 +1294,7 @@ class DebugCog(commands.Cog):
             embed = discord.Embed(
                 title="🔧 Restaurar Racha" + (" (SIMULACIÓN)" if dry_run else ""),
                 color=discord.Color.orange() if dry_run else discord.Color.green(),
-                timestamp=datetime.now()
+                timestamp=datetime.now(LOCAL_TZ)
             )
             
             embed.add_field(name="👤 Usuario", value=f"{usuario.mention} ({usuario.name})", inline=True)
@@ -1322,7 +1332,7 @@ class DebugCog(commands.Cog):
             
             # ========== APLICAR ==========
             new_best = max(best_streak, nueva_racha)
-            self.db.update_global_user(
+            await self.db.update_global_user(
                 usuario.id,
                 current_streak=nueva_racha,
                 best_streak=new_best,
@@ -1331,15 +1341,15 @@ class DebugCog(commands.Cog):
             )
             
             current_season = get_current_season()
-            season_stats = self.db.get_season_stats(usuario.id, target_guild_id, current_season)
+            season_stats = await self.db.get_season_stats(usuario.id, target_guild_id, current_season)
             if season_stats:
-                self.db.update_season_stats(
+                await self.db.update_season_stats(
                     usuario.id, target_guild_id, current_season,
                     season_points=season_stats['season_points'] + total_compensation,
                     season_best_streak=max(season_stats['season_best_streak'], nueva_racha)
                 )
             else:
-                self.db.update_season_stats(
+                await self.db.update_season_stats(
                     usuario.id, target_guild_id, current_season,
                     season_points=total_compensation, season_poles=0,
                     season_critical=0, season_fast=0, season_normal=0, season_marranero=0,
@@ -1397,7 +1407,7 @@ class DebugCog(commands.Cog):
                 return
             
             target_guild_id = int(guild_id) if guild_id else interaction.guild.id
-            today = datetime.now().date()
+            today = datetime.now(LOCAL_TZ).date()
             
             if bug_date >= today:
                 await interaction.followup.send("❌ La fecha debe ser anterior a hoy.", ephemeral=True)
@@ -1412,7 +1422,7 @@ class DebugCog(commands.Cog):
             }
             
             # 1. Obtener usuarios activos del guild
-            active_user_ids = self.db.get_guild_active_user_ids(target_guild_id)
+            active_user_ids = await self.db.get_guild_active_user_ids(target_guild_id)
             if not active_user_ids:
                 await interaction.followup.send(f"❌ No hay usuarios activos en guild {target_guild_id}", ephemeral=True)
                 return
@@ -1421,7 +1431,7 @@ class DebugCog(commands.Cog):
             skipped_users = []
             
             for uid in active_user_ids:
-                global_user = self.db.get_global_user(uid)
+                global_user = await self.db.get_global_user(uid)
                 if not global_user:
                     continue
                 
@@ -1433,7 +1443,7 @@ class DebugCog(commands.Cog):
                 if current >= best:
                     continue
                 
-                pole_dates = self.db.get_user_pole_dates_global(uid, limit=120)
+                pole_dates = await self.db.get_user_pole_dates_global(uid, limit=120)
                 pole_dates_set = set(pole_dates)
                 
                 if not pole_dates:
@@ -1537,7 +1547,7 @@ class DebugCog(commands.Cog):
                     f"**Descartados:** {len(skipped_users)}"
                 ),
                 color=discord.Color.orange() if dry_run else discord.Color.green(),
-                timestamp=datetime.now()
+                timestamp=datetime.now(LOCAL_TZ)
             )
             
             total_points_all = 0.0
@@ -1595,7 +1605,7 @@ class DebugCog(commands.Cog):
                 nueva_racha = u['nueva_racha']
                 new_best = max(u['best_streak'], nueva_racha)
                 
-                self.db.update_global_user(
+                await self.db.update_global_user(
                     uid,
                     current_streak=nueva_racha,
                     best_streak=new_best,
@@ -1603,15 +1613,15 @@ class DebugCog(commands.Cog):
                     username=u['username']
                 )
                 
-                season_stats = self.db.get_season_stats(uid, target_guild_id, current_season)
+                season_stats = await self.db.get_season_stats(uid, target_guild_id, current_season)
                 if season_stats:
-                    self.db.update_season_stats(
+                    await self.db.update_season_stats(
                         uid, target_guild_id, current_season,
                         season_points=season_stats['season_points'] + u['comp_total'],
                         season_best_streak=max(season_stats['season_best_streak'], nueva_racha)
                     )
                 else:
-                    self.db.update_season_stats(
+                    await self.db.update_season_stats(
                         uid, target_guild_id, current_season,
                         season_points=u['comp_total'], season_poles=0,
                         season_critical=0, season_fast=0, season_normal=0, season_marranero=0,
