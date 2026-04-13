@@ -40,6 +40,7 @@ log = logging.getLogger('PoleCog')
 FIRE = "<a:fire:1440018375144374302>"
 GRAY_FIRE = "<:gray_fire:1445324596751503485>"
 PUTA_REGEX = re.compile(r'(?<!\w)puta+(?!\w)', re.IGNORECASE)
+PUTOMETRO_MEME_URL = "https://i.imgur.com/v2YghCs.jpeg"
 
 
 def _ensure_local_tz(dt: datetime) -> datetime:
@@ -841,6 +842,7 @@ class PoleCog(commands.Cog):
                 timestamp=now_local
             )
             embed.set_thumbnail(url=message.author.display_avatar.url)
+            embed.set_image(url=f"{PUTOMETRO_MEME_URL}?v={int(now_local.timestamp())}")
 
             embed.add_field(
                 name=t('putometro.trigger.field.message', guild.id),
