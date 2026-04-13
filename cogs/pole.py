@@ -39,6 +39,7 @@ log = logging.getLogger('PoleCog')
 # Emoji de fuego personalizado (usar en todo el bot)
 FIRE = "<a:fire:1440018375144374302>"
 GRAY_FIRE = "<:gray_fire:1445324596751503485>"
+PUTA_REGEX = re.compile(r'(?<!\w)puta+(?!\w)', re.IGNORECASE)
 
 
 def _ensure_local_tz(dt: datetime) -> datetime:
@@ -478,7 +479,15 @@ class PoleCog(commands.Cog):
         self.bot = bot
         self.db = bot._db  # Instancia compartida de Database (creada en main.py)
         self._pole_locks: Dict[str, asyncio.Lock] = {}  # Anti-race-condition: lock por usuario+guild+fecha
+        self._putometro_milestones = (10, 25, 50, 100, 250, 500, 1000, 2500, 5000)
+        self._putometro_boss_threshold = 5
+        self._putometro_user_cooldown_seconds = 120
+        self._putometro_guild_cooldown_seconds = 30
+        self._putometro_user_cooldowns: Dict[tuple[int, int], datetime] = {}
+        self._putometro_guild_cooldowns: Dict[int, datetime] = {}
         self._last_generation_date: Optional[str] = None  # Marca de rollover diario en hora local
+        self._scheduler_started = False
+        self._scheduler_start_task: Optional[asyncio.Task[Any]] = None
         self.scheduler = PoleScheduler(
             self.db,
             on_send_summary=self._send_summary,
@@ -487,16 +496,45 @@ class PoleCog(commands.Cog):
         )
         
         log.info("Pole Cog inicializado correctamente")
-    
-    async def cog_load(self) -> None:
-        """Arranque del Cog: iniciar scheduler APScheduler."""
+
+    async def _start_scheduler_safe(self) -> None:
+        """Iniciar scheduler exactamente una vez, con trazas claras."""
+        if self._scheduler_started:
+            return
+
         await self.scheduler.start()
         self._last_generation_date = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
+        self._scheduler_started = True
         log.info("PoleScheduler iniciado correctamente")
+
+    async def _start_scheduler_when_ready(self) -> None:
+        """Esperar a READY antes de arrancar scheduler para evitar callbacks con caché incompleta."""
+        try:
+            await self.bot.wait_until_ready()
+            await self._start_scheduler_safe()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            log.exception("❌ Error iniciando PoleScheduler post-ready")
+    
+    async def cog_load(self) -> None:
+        """Arranque del Cog: iniciar scheduler cuando el bot esté listo."""
+        if self.bot.is_ready():
+            await self._start_scheduler_safe()
+            return
+
+        self._scheduler_start_task = asyncio.create_task(self._start_scheduler_when_ready())
+        log.info("PoleScheduler diferido hasta que el bot esté READY")
     
     async def cog_unload(self) -> None:
         """Detener scheduler cuando se descarga el cog."""
-        await self.scheduler.shutdown(wait=False)
+        if self._scheduler_start_task and not self._scheduler_start_task.done():
+            self._scheduler_start_task.cancel()
+        self._scheduler_start_task = None
+
+        if self._scheduler_started:
+            await self.scheduler.shutdown(wait=False)
+            self._scheduler_started = False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Resolver idioma del servidor antes de ejecutar comandos slash del cog."""
@@ -504,16 +542,45 @@ class PoleCog(commands.Cog):
             await resolve_guild_language(interaction.guild.id, self.db)
         return True
 
+    async def _resolve_text_channel(self, guild_id: int, channel_id: int) -> Optional[discord.TextChannel]:
+        """Resolver canal de texto usando caché y fallback a fetch para robustez."""
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            log.warning(f"⚠️ Guild {guild_id} no está en caché para resolver canal {channel_id}")
+            return None
+
+        channel = guild.get_channel(channel_id)
+        if isinstance(channel, discord.TextChannel):
+            return channel
+
+        alt_channel = self.bot.get_channel(channel_id)
+        if isinstance(alt_channel, discord.TextChannel):
+            return alt_channel
+
+        try:
+            fetched = await self.bot.fetch_channel(channel_id)
+            if isinstance(fetched, discord.TextChannel):
+                return fetched
+            log.warning(f"⚠️ Canal {channel_id} en guild {guild_id} no es TextChannel")
+        except Exception as exc:
+            log.warning(f"⚠️ No se pudo resolver canal {channel_id} en guild {guild_id}: {exc}")
+
+        return None
+
     async def _send_summary(self, guild_id: int, summary_date: str) -> None:
         """Hook del scheduler: enviar resumen diario del guild."""
+        log.info(f"🌃 Callback summary guild={guild_id} date={summary_date}")
         server_config = await self.db.get_server_config(guild_id)
         if not server_config:
+            log.warning(f"⚠️ Callback summary: sin configuración para guild {guild_id}")
             return
 
-        set_cached_guild_language(guild_id, str(server_config.get('language') or 'es'))
+        lang = await resolve_guild_language(guild_id, self.db)
+        set_cached_guild_language(guild_id, lang)
 
         channel_id = server_config.get('pole_channel_id')
         if not channel_id:
+            log.warning(f"⚠️ Callback summary: guild {guild_id} sin pole_channel_id")
             return
 
         await self.send_midnight_summary(guild_id, int(channel_id), summary_date)
@@ -536,14 +603,18 @@ class PoleCog(commands.Cog):
 
     async def _open_pole(self, guild_id: int, dt: datetime) -> None:
         """Hook del scheduler: apertura real de la pole del día."""
+        log.info(f"🌅 Callback open guild={guild_id} dt={dt.isoformat()}")
         server_config = await self.db.get_server_config(guild_id)
         if not server_config:
+            log.warning(f"⚠️ Callback open: sin configuración para guild {guild_id}")
             return
 
-        set_cached_guild_language(guild_id, str(server_config.get('language') or 'es'))
+        lang = await resolve_guild_language(guild_id, self.db)
+        set_cached_guild_language(guild_id, lang)
 
         channel_id = server_config.get('pole_channel_id')
         if not channel_id:
+            log.warning(f"⚠️ Callback open: guild {guild_id} sin pole_channel_id")
             return
 
         if int(server_config.get('notify_opening', 1)) == 0:
@@ -555,6 +626,7 @@ class PoleCog(commands.Cog):
             channel_id=int(channel_id),
             ping_role_id=server_config.get('ping_role_id'),
             ping_mode=str(server_config.get('ping_mode', 'none')),
+            opening_dt=dt,
         )
 
     # ==================== SISTEMA DE ROBUSTEZ/FAILSAFE ====================
@@ -660,6 +732,197 @@ class PoleCog(commands.Cog):
         
         # Verificar que sea exactamente "pole" (case insensitive)
         return content.lower() == 'pole'
+
+    @staticmethod
+    def _count_puta_occurrences(content: str) -> int:
+        """Contar ocurrencias de 'puta' (incluye variantes tipo putaaa)."""
+        return len(PUTA_REGEX.findall(content or ""))
+
+    @staticmethod
+    def _find_crossed_milestone(prev_total: int, new_total: int, milestones: tuple[int, ...]) -> Optional[int]:
+        """Detectar el mayor milestone cruzado entre prev_total y new_total."""
+        crossed = [m for m in milestones if prev_total < m <= new_total]
+        return max(crossed) if crossed else None
+
+    def _prune_putometro_cooldowns(self, now: datetime) -> None:
+        """Limpiar cooldowns expirados para evitar crecimiento indefinido en memoria."""
+        expired_users = [k for k, v in self._putometro_user_cooldowns.items() if v <= now]
+        for key in expired_users:
+            del self._putometro_user_cooldowns[key]
+
+        expired_guilds = [gid for gid, v in self._putometro_guild_cooldowns.items() if v <= now]
+        for gid in expired_guilds:
+            del self._putometro_guild_cooldowns[gid]
+
+    def _can_emit_putometro_boss(self, guild_id: int, user_id: int, now: datetime) -> bool:
+        """Controlar cooldown de boss mode por usuario+guild y por guild."""
+        self._prune_putometro_cooldowns(now)
+
+        user_key = (guild_id, user_id)
+        user_until = self._putometro_user_cooldowns.get(user_key)
+        guild_until = self._putometro_guild_cooldowns.get(guild_id)
+
+        if user_until is not None and user_until > now:
+            return False
+        if guild_until is not None and guild_until > now:
+            return False
+
+        self._putometro_user_cooldowns[user_key] = now + timedelta(seconds=self._putometro_user_cooldown_seconds)
+        self._putometro_guild_cooldowns[guild_id] = now + timedelta(seconds=self._putometro_guild_cooldown_seconds)
+        return True
+
+    @staticmethod
+    def _putometro_color(occurrences: int) -> discord.Color:
+        """Color del embed según intensidad del mensaje."""
+        if occurrences >= 6:
+            return discord.Color.from_rgb(220, 20, 60)
+        if occurrences >= 3:
+            return discord.Color.orange()
+        return discord.Color.blurple()
+
+    @staticmethod
+    def _putometro_mode_key(occurrences: int, user_total: int) -> str:
+        """Seleccionar modo textual del putómetro para el embed."""
+        if occurrences >= 6:
+            return 'putometro.trigger.mode.nuclear'
+        if occurrences >= 3:
+            return 'putometro.trigger.mode.chaos'
+        if user_total >= 100:
+            return 'putometro.trigger.mode.veteran'
+        return 'putometro.trigger.mode.warmup'
+
+    async def _handle_putometro_message(self, message: discord.Message) -> None:
+        """Procesar easter egg de putómetro sin tocar el flujo de poles."""
+        guild = message.guild
+        if guild is None:
+            return
+
+        occurrences = self._count_puta_occurrences(message.content)
+        if occurrences <= 0:
+            return
+
+        try:
+            lang = await resolve_guild_language(guild.id, self.db)
+            set_cached_guild_language(guild.id, lang)
+
+            now_local = datetime.now(LOCAL_TZ)
+            user_total, guild_total = await self.db.increment_puta_counter(
+                guild_id=guild.id,
+                user_id=message.author.id,
+                amount=occurrences,
+            )
+            prev_total = max(0, int(user_total) - int(occurrences))
+            crossed_milestone = self._find_crossed_milestone(prev_total, int(user_total), self._putometro_milestones)
+
+            boss_enabled = False
+            flash_context: Optional[Dict[str, Any]] = None
+            if occurrences >= self._putometro_boss_threshold:
+                boss_enabled = self._can_emit_putometro_boss(guild.id, message.author.id, now_local)
+                if boss_enabled:
+                    flash_context = await self.db.get_puta_boss_flash_context(
+                        guild_id=guild.id,
+                        user_id=message.author.id,
+                        top_limit=3,
+                    )
+
+            mode_key = self._putometro_mode_key(occurrences, int(user_total))
+            if boss_enabled:
+                mode_key = 'putometro.trigger.mode.boss'
+
+            embed = discord.Embed(
+                title=t('putometro.trigger.title', guild.id),
+                description=t(
+                    'putometro.trigger.desc',
+                    guild.id,
+                    mention=message.author.mention,
+                    message_count=occurrences,
+                ),
+                color=self._putometro_color(occurrences),
+                timestamp=now_local
+            )
+            embed.set_thumbnail(url=message.author.display_avatar.url)
+
+            embed.add_field(
+                name=t('putometro.trigger.field.message', guild.id),
+                value=t('putometro.trigger.value.message_count', guild.id, message_count=occurrences),
+                inline=True
+            )
+            embed.add_field(
+                name=t('putometro.trigger.field.user_total', guild.id),
+                value=t('putometro.trigger.value.user_total', guild.id, user_count=user_total),
+                inline=True
+            )
+            embed.add_field(
+                name=t('putometro.trigger.field.guild_total', guild.id),
+                value=t('putometro.trigger.value.guild_total', guild.id, guild_total=guild_total),
+                inline=True
+            )
+            embed.add_field(
+                name=t('putometro.trigger.field.mode', guild.id),
+                value=t(mode_key, guild.id),
+                inline=False
+            )
+
+            if crossed_milestone is not None:
+                embed.add_field(
+                    name=t('putometro.trigger.field.milestone', guild.id),
+                    value=t(
+                        'putometro.trigger.milestone.value',
+                        guild.id,
+                        milestone=int(crossed_milestone),
+                        user_count=int(user_total),
+                    ),
+                    inline=False
+                )
+
+            if boss_enabled and flash_context:
+                top_rows = flash_context.get('top', [])
+                top_text = "\n".join(
+                    t(
+                        'putometro.trigger.ranking.top_entry',
+                        guild.id,
+                        position=idx,
+                        mention=f"<@{int(row['user_id'])}>",
+                        count=int(row['total_count']),
+                    )
+                    for idx, row in enumerate(top_rows, start=1)
+                )
+                if not top_text:
+                    top_text = t('common.none', guild.id)
+
+                embed.add_field(
+                    name=t('putometro.trigger.field.ranking_flash', guild.id),
+                    value=t(
+                        'putometro.trigger.ranking.you',
+                        guild.id,
+                        rank=int(flash_context.get('user_rank', 0)),
+                        total_users=int(flash_context.get('total_users', 0)),
+                        user_total=int(flash_context.get('user_total', 0)),
+                        top=top_text,
+                    ),
+                    inline=False
+                )
+
+            if boss_enabled and crossed_milestone is not None:
+                footer_key = 'putometro.trigger.footer.boss_milestone'
+            elif boss_enabled:
+                footer_key = 'putometro.trigger.footer.boss'
+            elif crossed_milestone is not None:
+                footer_key = 'putometro.trigger.footer.milestone'
+            else:
+                footer_key = 'putometro.trigger.footer'
+
+            embed.set_footer(
+                text=t(
+                    footer_key,
+                    guild.id,
+                    milestone=int(crossed_milestone or 0),
+                )
+            )
+
+            await message.reply(embed=embed, mention_author=False)
+        except Exception as exc:
+            log.warning(f"⚠️ Putómetro: no se pudo procesar mensaje en guild {guild.id}: {exc}")
     
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -688,6 +951,7 @@ class PoleCog(commands.Cog):
             
             # Verificar si el mensaje es un pole válido
             if not self.is_valid_pole(message.content):
+                await self._handle_putometro_message(message)
                 return
         except Exception as e:
             log.error(f"❌ Error en verificaciones iniciales de on_message: {e}")
@@ -1099,6 +1363,121 @@ class PoleCog(commands.Cog):
             await message.add_reaction('🚫')
         except:
             pass
+
+    @staticmethod
+    def _format_delay_for_notification(minutes: int) -> str:
+        h = minutes // 60
+        m = minutes % 60
+        if h > 0:
+            return f"{h}h {m} min" if m > 0 else f"{h}h"
+        return f"{m} min"
+
+    def _build_pole_notification_embed(
+        self,
+        guild: Optional[discord.Guild],
+        author: discord.abc.User,
+        pole_type: str,
+        position: int,
+        points_base: float,
+        multiplier: float,
+        points_earned: float,
+        streak: int,
+        streak_broken: bool,
+        timestamp: datetime,
+        delay_minutes: int,
+        guild_id: int,
+    ) -> discord.Embed:
+        """Construir embed de pole ganado para uso normal y preview debug."""
+        emoji = get_pole_emoji(pole_type)
+        name = get_pole_name(pole_type, guild_id)
+        delay_formatted = self._format_delay_for_notification(delay_minutes)
+        time_str = timestamp.strftime('%H:%M:%S')
+        points_label = t('common.pts', guild_id)
+
+        embed = discord.Embed(
+            title=f"{emoji} {name} {emoji}",
+            color=self.get_pole_color(pole_type),
+            timestamp=timestamp
+        )
+        embed.set_author(
+            name=t('pole.notification.author', guild_id, user=author.display_name),
+            icon_url=author.display_avatar.url
+        )
+        if guild and guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+
+        descriptions = {
+            'critical': t('pole.notification.description_critical', guild_id, mention=author.mention, delay=delay_formatted),
+            'fast': t('pole.notification.description_fast', guild_id, mention=author.mention, delay=delay_formatted),
+            'normal': t('pole.notification.description_normal', guild_id, mention=author.mention, delay=delay_formatted),
+            'late': t('pole.notification.description_late', guild_id, mention=author.mention, delay=delay_formatted),
+            'marranero': t('pole.notification.description_marranero', guild_id, mention=author.mention, delay=delay_formatted)
+        }
+        description = descriptions.get(pole_type, f"{author.mention}")
+        embed.description = description
+
+        embed.add_field(
+            name=t('pole.field.total_earned', guild_id),
+            value=f"```+{points_earned:.1f} {points_label}```",
+            inline=False
+        )
+
+        streak_emoji = FIRE if streak > 1 else GRAY_FIRE
+        if streak > 1:
+            streak_value = t(
+                'pole.field.streak_hot_value',
+                guild_id,
+                emoji=streak_emoji,
+                days=streak,
+                multiplier=f"{multiplier:.1f}"
+            )
+        else:
+            streak_value = t(
+                'pole.field.streak_cold_value',
+                guild_id,
+                emoji=streak_emoji,
+                days=streak,
+                multiplier=f"{multiplier:.1f}"
+            )
+
+        embed.add_field(name=t('pole.field.position', guild_id), value=f"#{position}", inline=True)
+        embed.add_field(name=t('pole.field.delay', guild_id), value=delay_formatted, inline=True)
+        embed.add_field(name=t('pole.field.time', guild_id), value=time_str, inline=True)
+
+        embed.add_field(
+            name=t('pole.field.base_points', guild_id),
+            value=f"{points_base:.1f} {points_label}",
+            inline=True
+        )
+        embed.add_field(
+            name=t('pole.field.streak_status', guild_id),
+            value=streak_value,
+            inline=True
+        )
+
+        embed.add_field(
+            name=t('pole.field.streak', guild_id, emoji=streak_emoji),
+            value=t('pole.field.streak_days', guild_id, days=streak),
+            inline=True
+        )
+
+        footer_messages = {
+            'critical': t('pole.footer.critical', guild_id),
+            'fast': t('pole.footer.fast', guild_id),
+            'normal': t('pole.footer.normal', guild_id),
+            'late': t('pole.footer.late', guild_id),
+            'marranero': t('pole.footer.marranero', guild_id)
+        }
+        embed.set_footer(text=footer_messages.get(pole_type, ""))
+
+        if streak_broken:
+            embed.add_field(
+                name=t('pole.field.broken_streak_title', guild_id),
+                value=t('pole.field.broken_streak_desc', guild_id),
+                inline=False
+            )
+
+        return embed
     
     async def send_pole_notification(self, message: discord.Message,
                                      pole_type: str, position: int,
@@ -1109,90 +1488,53 @@ class PoleCog(commands.Cog):
         """
         Enviar notificación de victoria con personalidad
         """
-        def format_delay(minutes: int) -> str:
-            h = minutes // 60
-            m = minutes % 60
-            if h > 0:
-                return f"{h}h {m} min" if m > 0 else f"{h}h"
-            return f"{m} min"
-        
-        emoji = get_pole_emoji(pole_type)
-        name = get_pole_name(pole_type, guild_id)
-        delay_formatted = format_delay(delay_minutes)
-        
-        # Crear embed
-        embed = discord.Embed(
-            title=f"{emoji} {name} {emoji}",
-            color=self.get_pole_color(pole_type),
-            timestamp=timestamp
+        embed = self._build_pole_notification_embed(
+            guild=message.guild,
+            author=message.author,
+            pole_type=pole_type,
+            position=position,
+            points_base=points_base,
+            multiplier=multiplier,
+            points_earned=points_earned,
+            streak=streak,
+            streak_broken=streak_broken,
+            timestamp=timestamp,
+            delay_minutes=delay_minutes,
+            guild_id=guild_id,
         )
-        
-        # Mensaje personalizado según tipo (con delay dinámico)
-        descriptions = {
-            'critical': t('pole.notification.description_critical', guild_id, mention=message.author.mention, delay=delay_formatted),
-            'fast': t('pole.notification.description_fast', guild_id, mention=message.author.mention, delay=delay_formatted),
-            'normal': t('pole.notification.description_normal', guild_id, mention=message.author.mention, delay=delay_formatted),
-            'late': t('pole.notification.description_late', guild_id, mention=message.author.mention, delay=delay_formatted),
-            'marranero': t('pole.notification.description_marranero', guild_id, mention=message.author.mention, delay=delay_formatted)
-        }
-        description = descriptions.get(pole_type, f"{message.author.mention}")
-        
-        embed.description = description
-        
-        # Información de tiempo
-        time_str = timestamp.strftime('%H:%M:%S')
-        embed.add_field(name=t('pole.field.time', guild_id), value=time_str, inline=True)
-        embed.add_field(name=t('pole.field.delay', guild_id), value=format_delay(delay_minutes), inline=True)
-        embed.add_field(name=t('pole.field.position', guild_id), value=f"#{position}", inline=True)
-        
-        # Información de puntos
-        embed.add_field(
-            name=t('pole.field.base_points', guild_id),
-            value=f"{points_base:.1f} pts",
-            inline=True
-        )
-        
-        # Emoji según estado de racha
-        streak_emoji = FIRE if streak > 1 else GRAY_FIRE
-        if streak > 1:
-            embed.add_field(
-                name=t('pole.field.streak_multi', guild_id, emoji=streak_emoji, multiplier=f"{multiplier:.1f}"),
-                value=t('pole.field.streak_days', guild_id, days=streak),
-                inline=True
-            )
-        else:
-            embed.add_field(
-                name=t('pole.field.streak', guild_id, emoji=streak_emoji),
-                value=t('pole.field.streak_one_day', guild_id),
-                inline=True
-            )
-        
-        embed.add_field(
-            name=t('pole.field.total_earned', guild_id),
-            value=f"**{points_earned:.1f} pts**",
-            inline=True
-        )
-        
-        # Mensaje final con personalidad
-        footer_messages = {
-            'critical': t('pole.footer.critical', guild_id),
-            'fast': t('pole.footer.fast', guild_id),
-            'normal': t('pole.footer.normal', guild_id),
-            'late': t('pole.footer.late', guild_id),
-            'marranero': t('pole.footer.marranero', guild_id)
-        }
-        
-        embed.set_footer(text=footer_messages.get(pole_type, ""))
-        
-        # Si se rompió una racha larga, avisar
-        if streak_broken and streak > 7:
-            embed.add_field(
-                name=t('pole.field.streak_broken_title', guild_id),
-                value=t('pole.field.streak_broken_desc', guild_id),
-                inline=False
-            )
-        
         await message.channel.send(embed=embed)
+
+    async def send_pole_notification_preview(
+        self,
+        guild: discord.Guild,
+        channel: discord.TextChannel,
+        member: discord.Member,
+        pole_type: str,
+        position: int,
+        points_base: float,
+        multiplier: float,
+        points_earned: float,
+        streak: int,
+        streak_broken: bool,
+        timestamp: datetime,
+        delay_minutes: int,
+    ) -> None:
+        """Enviar preview de notificación de pole sin tocar estado de base de datos."""
+        embed = self._build_pole_notification_embed(
+            guild=guild,
+            author=member,
+            pole_type=pole_type,
+            position=position,
+            points_base=points_base,
+            multiplier=multiplier,
+            points_earned=points_earned,
+            streak=streak,
+            streak_broken=streak_broken,
+            timestamp=timestamp,
+            delay_minutes=delay_minutes,
+            guild_id=guild.id,
+        )
+        await channel.send(embed=embed)
     
     def get_pole_color(self, pole_type: str) -> discord.Color:
         """Obtener color del embed según tipo de pole"""
@@ -1213,16 +1555,17 @@ class PoleCog(commands.Cog):
         if interaction.guild is None:
             await interaction.response.send_message(t('errors.server_only_short', None), ephemeral=True)
             return
+        await interaction.response.defer(ephemeral=True)
 
         await resolve_guild_language(interaction.guild.id, self.db)
         
         member = interaction.user if isinstance(interaction.user, discord.Member) else interaction.guild.get_member(interaction.user.id)
         if member is None:
-            await interaction.response.send_message(t('errors.no_permissions_check', interaction.guild.id), ephemeral=True)
+            await interaction.followup.send(t('errors.no_permissions_check', interaction.guild.id), ephemeral=True)
             return
         view = SettingsView(self.db, interaction.guild.id, member)
         embed = await view.create_embed(interaction.guild)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
     
     @app_commands.command(name="profile", description=_T('cmd.profile.desc'))
     @app_commands.describe(
@@ -1293,51 +1636,61 @@ class PoleCog(commands.Cog):
                 title=t('profile.title_global', interaction.guild.id if interaction.guild else None,
                         display_name=target_user.display_name),
                 description=t('profile.desc_global', interaction.guild.id if interaction.guild else None),
-                color=discord.Color.blue(),
+                color=discord.Color.gold(),
                 timestamp=datetime.now(LOCAL_TZ)
             )
-            
             embed.set_thumbnail(url=target_user.display_avatar.url)
-            
-            # Mostrar badge de temporada actual si existe
+
+            gid_ctx = interaction.guild.id if interaction.guild else None
+
+            # Fila 1: temporada actual + rango histórico
             if current_season_poles > 0:
-                season_rank_emoji, season_rank_name = get_rank_info(current_season_points, interaction.guild.id if interaction.guild else None)
-                embed.add_field(
-                    name=t('profile.field.season_current', interaction.guild.id if interaction.guild else None),
-                    value=t('profile.field.season_rank_value', interaction.guild.id if interaction.guild else None,
-                            emoji=season_rank_emoji, name=season_rank_name, points=f"{current_season_points:.1f}"),
-                    inline=False
+                season_rank_emoji, season_rank_name = get_rank_info(current_season_points, gid_ctx)
+                season_value = t(
+                    'profile.field.season_rank_value',
+                    gid_ctx,
+                    emoji=season_rank_emoji,
+                    name=season_rank_name,
+                    points=f"{current_season_points:.1f}"
                 )
+            else:
+                season_value = t('common.none', gid_ctx)
+
+            embed.add_field(
+                name=t('profile.field.season_current', gid_ctx),
+                value=season_value,
+                inline=True
+            )
             
             # Rango Histórico (basado en mejor temporada)
             embed.add_field(
-                name=t('profile.field.rank_historical', interaction.guild.id if interaction.guild else None),
-                value=t('profile.field.rank_value', interaction.guild.id if interaction.guild else None,
+                name=t('profile.field.rank_historical', gid_ctx),
+                value=t('profile.field.rank_value', gid_ctx,
                         emoji=rank_emoji, name=rank_name, best_points=f"{best_season_points:.1f}"),
                 inline=True
             )
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
             
-            # Puntos totales
+            # Grid 2x2 de métricas
             embed.add_field(
-                name=t('profile.field.total_points', interaction.guild.id if interaction.guild else None),
-                value=f"**{global_stats['total_points']:.1f}** pts",
+                name=t('profile.field.total_points', gid_ctx),
+                value=f"**{global_stats['total_points']:.1f}** {t('common.pts', gid_ctx)}",
                 inline=True
             )
-            
-            # Poles totales
             embed.add_field(
-                name=t('profile.field.total_poles', interaction.guild.id if interaction.guild else None),
+                name=t('profile.field.total_poles', gid_ctx),
                 value=f"**{global_stats['total_poles']}**",
                 inline=True
             )
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
             
             # Racha actual (GLOBAL entre servidores)
             current_streak = global_user['current_streak'] if global_user else 0
             streak_emoji = FIRE if current_streak > 0 else GRAY_FIRE
             embed.add_field(
-                name=t('profile.field.current_streak', interaction.guild.id if interaction.guild else None, 
+                name=t('profile.field.current_streak', gid_ctx, 
                        emoji=streak_emoji),
-                value=t('profile.field.streak_days', interaction.guild.id if interaction.guild else None, 
+                value=t('profile.field.streak_days', gid_ctx, 
                         days=current_streak),
                 inline=True
             )
@@ -1346,21 +1699,23 @@ class PoleCog(commands.Cog):
             best_streak = global_user['best_streak'] if global_user else 0
             best_streak_emoji = FIRE if best_streak > 0 else GRAY_FIRE
             embed.add_field(
-                name=t('profile.field.best_streak', interaction.guild.id if interaction.guild else None, 
+                name=t('profile.field.best_streak', gid_ctx, 
                        emoji=best_streak_emoji),
-                value=t('profile.field.streak_days', interaction.guild.id if interaction.guild else None, 
+                value=t('profile.field.streak_days', gid_ctx, 
                         days=best_streak),
                 inline=True
             )
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
             
-            # Desglose por tipo (GLOBAL)
-            breakdown = t('profile.breakdown', interaction.guild.id if interaction.guild else None,
-                         critical=global_stats.get('critical_poles', 0),
-                         fast=global_stats.get('fast_poles', 0),
-                         normal=global_stats.get('normal_poles', 0),
-                         marranero=global_stats.get('marranero_poles', 0))
+            # Desglose por tipo compacto (centrado visualmente)
+            breakdown = (
+                f"💎 **{global_stats.get('critical_poles', 0)}**"
+                f"  |  ⚡ **{global_stats.get('fast_poles', 0)}**"
+                f"  |  🏁 **{global_stats.get('normal_poles', 0)}**"
+                f"  |  🐷 **{global_stats.get('marranero_poles', 0)}**"
+            )
             embed.add_field(
-                name=t('profile.field.breakdown', interaction.guild.id if interaction.guild else None),
+                name=t('profile.field.breakdown', gid_ctx),
                 value=breakdown,
                 inline=False
             )
@@ -1412,21 +1767,29 @@ class PoleCog(commands.Cog):
                 title=t('profile.title_local', gid, display_name=target_user.display_name,
                         guild_name=interaction.guild.name),
                 description=t('profile.desc_local', gid),
-                color=discord.Color.green(),
+                color=discord.Color.blurple(),
                 timestamp=datetime.now(LOCAL_TZ)
             )
-            
             embed.set_thumbnail(url=target_user.display_avatar.url)
-            
-            # Mostrar badge de temporada actual si existe
+
+            # Fila 1: temporada actual + rango histórico
             if season_stats and season_stats.get('season_poles', 0) > 0:
                 season_rank_emoji, season_rank_name = get_rank_info(season_stats['season_points'], gid)
-                embed.add_field(
-                    name=t('profile.field.season_current', gid),
-                    value=t('profile.field.season_rank_value', gid,
-                            emoji=season_rank_emoji, name=season_rank_name, points=f"{season_stats['season_points']:.1f}"),
-                    inline=False
+                season_value = t(
+                    'profile.field.season_rank_value',
+                    gid,
+                    emoji=season_rank_emoji,
+                    name=season_rank_name,
+                    points=f"{season_stats['season_points']:.1f}"
                 )
+            else:
+                season_value = t('common.none', gid)
+
+            embed.add_field(
+                name=t('profile.field.season_current', gid),
+                value=season_value,
+                inline=True
+            )
             
             # Rango Histórico (basado en mejor temporada EN ESTE SERVIDOR)
             embed.add_field(
@@ -1435,20 +1798,20 @@ class PoleCog(commands.Cog):
                         emoji=rank_emoji, name=rank_name, best_points=f"{best_season_points:.1f}"),
                 inline=True
             )
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
             
-            # Puntos totales EN ESTE SERVIDOR
+            # Grid 2x2 de métricas
             embed.add_field(
                 name=t('profile.field.points_server', gid),
-                value=f"**{user_data['total_points']:.1f}** pts",
+                value=f"**{user_data['total_points']:.1f}** {t('common.pts', gid)}",
                 inline=True
             )
-            
-            # Poles totales EN ESTE SERVIDOR
             embed.add_field(
                 name=t('profile.field.poles_server', gid),
                 value=f"**{user_data['total_poles']}**",
                 inline=True
             )
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
             
             # Racha actual (GLOBAL entre servidores)
             current_streak = global_user['current_streak'] if global_user else 0
@@ -1467,13 +1830,15 @@ class PoleCog(commands.Cog):
                 value=t('profile.field.streak_days', gid, days=best_streak),
                 inline=True
             )
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
             
-            # Desglose por tipo (SOLO ESTE SERVIDOR)
-            breakdown = t('profile.breakdown', gid,
-                         critical=user_data.get('critical_poles', 0),
-                         fast=user_data.get('fast_poles', 0),
-                         normal=user_data.get('normal_poles', 0),
-                         marranero=user_data.get('marranero_poles', 0))
+            # Desglose por tipo compacto (centrado visualmente)
+            breakdown = (
+                f"💎 **{user_data.get('critical_poles', 0)}**"
+                f"  |  ⚡ **{user_data.get('fast_poles', 0)}**"
+                f"  |  🏁 **{user_data.get('normal_poles', 0)}**"
+                f"  |  🐷 **{user_data.get('marranero_poles', 0)}**"
+            )
             embed.add_field(
                 name=t('profile.field.breakdown_server', gid),
                 value=breakdown,
@@ -1644,13 +2009,11 @@ class PoleCog(commands.Cog):
                     guild = self.bot.get_guild(represented_guild_id)
                     if guild:
                         guild_text = f" • 🏳️ {guild.name}"
-                    else:
-                        guild_text = f" • 🏳️ ID:{represented_guild_id}"
                 
                 ranking_text += (
-                    f"{position_emoji} {rank_emoji} **{user_data['username']}**{guild_text}\n"
-                    f"💰 {points:.1f} pts • "
-                    f"🏁 {poles} poles{streak_info}\n\n"
+                    f"{position_emoji} {rank_emoji} **{user_data['username']}**{guild_text}"
+                    f" • 💰 {points:.1f} {t('common.pts', gid)}"
+                    f" • 🏁 {poles} {t('common.poles', gid)}{streak_info}\n"
                 )
             
             embed.description = ranking_text
@@ -1890,13 +2253,11 @@ class PoleCog(commands.Cog):
                     guild = self.bot.get_guild(represented_guild_id)
                     if guild:
                         guild_text = f" • 🏳️ {guild.name}"
-                    else:
-                        guild_text = f" • 🏳️ ID:{represented_guild_id}"
                 
                 ranking_text += (
-                    f"{position_emoji} {rank_emoji} **{user_data['username']}**{guild_text}\n"
-                    f"💰 {points:.1f} pts • "
-                    f"🏁 {poles} poles{streak_info}\n\n"
+                    f"{position_emoji} {rank_emoji} **{user_data['username']}**{guild_text}"
+                    f" • 💰 {points:.1f} {t('common.pts', interaction.guild.id if interaction.guild else None)}"
+                    f" • 🏁 {poles} {t('common.poles', interaction.guild.id if interaction.guild else None)}{streak_info}\n"
                 )
             
             embed.description = ranking_text
@@ -1942,6 +2303,185 @@ class PoleCog(commands.Cog):
             embed.description = ranking_text
         
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="putometro", description=_T('cmd.putometro.desc'))
+    @app_commands.describe(
+        alcance=_T('cmd.putometro.scope_param'),
+        limite=_T('cmd.putometro.limit_param')
+    )
+    @app_commands.choices(
+        alcance=[
+            _C('choice.putometro.scope.local', 'local'),
+            _C('choice.putometro.scope.global', 'global')
+        ]
+    )
+    async def putometro(
+        self,
+        interaction: discord.Interaction,
+        alcance: str = "local",
+        limite: app_commands.Range[int, 1, 25] = 10,
+    ):
+        """Ver ranking del putómetro local (usuarios) o global (guilds)."""
+        if interaction.guild is None:
+            await interaction.response.send_message(t('putometro.error.server_only', None), ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        gid = interaction.guild.id
+
+        try:
+            if alcance == 'local':
+                top_users = await self.db.get_puta_user_leaderboard(gid, int(limite))
+                guild_total = await self.db.get_puta_guild_total(gid)
+
+                if guild_total <= 0 or not top_users:
+                    embed = discord.Embed(
+                        title=t('putometro.rank.local.title', gid, server=interaction.guild.name),
+                        description=t('putometro.empty.local', gid),
+                        color=discord.Color.blurple(),
+                        timestamp=datetime.now(LOCAL_TZ),
+                    )
+                    embed.set_footer(text=t('putometro.footer.local', gid))
+                    await interaction.followup.send(embed=embed)
+                    return
+
+                embed = discord.Embed(
+                    title=t('putometro.rank.local.title', gid, server=interaction.guild.name),
+                    description=t('putometro.rank.local.desc', gid),
+                    color=discord.Color.purple(),
+                    timestamp=datetime.now(LOCAL_TZ),
+                )
+
+                top_lines = [
+                    t(
+                        'putometro.rank.local.entry',
+                        gid,
+                        position=idx,
+                        mention=f"<@{int(user_row['user_id'])}>",
+                        count=int(user_row['total_count']),
+                    )
+                    for idx, user_row in enumerate(top_users, start=1)
+                ]
+                embed.add_field(
+                    name=t('putometro.rank.local.field.top', gid, limit=int(limite)),
+                    value="\n".join(top_lines),
+                    inline=False,
+                )
+
+                user_total = await self.db.get_puta_user_count(gid, interaction.user.id)
+                user_rank = await self.db.get_puta_user_rank(gid, interaction.user.id)
+                if user_total > 0 and user_rank is not None:
+                    you_value = t(
+                        'putometro.rank.local.you_value',
+                        gid,
+                        mention=interaction.user.mention,
+                        user_count=user_total,
+                        position=user_rank,
+                    )
+                else:
+                    you_value = t(
+                        'putometro.rank.local.you_none',
+                        gid,
+                        mention=interaction.user.mention,
+                    )
+                embed.add_field(
+                    name=t('putometro.rank.local.field.you', gid),
+                    value=you_value,
+                    inline=False,
+                )
+
+                embed.add_field(
+                    name=t('putometro.rank.local.field.total', gid),
+                    value=t('putometro.rank.local.total_value', gid, guild_total=guild_total, server=interaction.guild.name),
+                    inline=False,
+                )
+
+                updated_text = t('putometro.footer.updated', gid, time=datetime.now(LOCAL_TZ).strftime('%H:%M:%S'))
+                local_text = t('putometro.footer.local', gid)
+                embed.set_footer(text=f"{updated_text} • {local_text}")
+                await interaction.followup.send(embed=embed)
+                return
+
+            if alcance == 'global':
+                top_guilds = await self.db.get_puta_guild_leaderboard(int(limite))
+                guilds_count = await self.db.get_puta_guilds_count()
+
+                if not top_guilds:
+                    embed = discord.Embed(
+                        title=t('putometro.rank.global.title', gid),
+                        description=t('putometro.empty.global', gid),
+                        color=discord.Color.blurple(),
+                        timestamp=datetime.now(LOCAL_TZ),
+                    )
+                    embed.set_footer(text=t('putometro.footer.global', gid, guilds_count=0))
+                    await interaction.followup.send(embed=embed)
+                    return
+
+                def guild_name_or_unknown(target_guild_id: int) -> str:
+                    target_guild = self.bot.get_guild(target_guild_id)
+                    if target_guild:
+                        return target_guild.name
+                    return t('putometro.guild.unknown', gid, target_id=target_guild_id)
+
+                embed = discord.Embed(
+                    title=t('putometro.rank.global.title', gid),
+                    description=t('putometro.rank.global.desc', gid),
+                    color=discord.Color.gold(),
+                    timestamp=datetime.now(LOCAL_TZ),
+                )
+
+                champion = top_guilds[0]
+                champion_name = guild_name_or_unknown(int(champion['guild_id']))
+                embed.add_field(
+                    name=t('putometro.rank.global.field.champion', gid),
+                    value=t('putometro.rank.global.champion_value', gid, guild_name=champion_name, count=int(champion['total_count'])),
+                    inline=False,
+                )
+
+                top_lines = [
+                    t(
+                        'putometro.rank.global.entry',
+                        gid,
+                        position=idx,
+                        guild_name=guild_name_or_unknown(int(guild_row['guild_id'])),
+                        count=int(guild_row['total_count']),
+                    )
+                    for idx, guild_row in enumerate(top_guilds, start=1)
+                ]
+                embed.add_field(
+                    name=t('putometro.rank.global.field.top', gid, limit=int(limite)),
+                    value="\n".join(top_lines),
+                    inline=False,
+                )
+
+                current_total = await self.db.get_puta_guild_total(gid)
+                current_rank = await self.db.get_puta_guild_rank(gid)
+                if current_total > 0 and current_rank is not None:
+                    current_value = t(
+                        'putometro.rank.global.current_value',
+                        gid,
+                        guild_name=interaction.guild.name,
+                        position=current_rank,
+                        count=current_total,
+                    )
+                else:
+                    current_value = t('putometro.rank.global.current_none', gid, guild_name=interaction.guild.name)
+                embed.add_field(
+                    name=t('putometro.rank.global.field.current', gid),
+                    value=current_value,
+                    inline=False,
+                )
+
+                updated_text = t('putometro.footer.updated', gid, time=datetime.now(LOCAL_TZ).strftime('%H:%M:%S'))
+                global_text = t('putometro.footer.global', gid, guilds_count=guilds_count)
+                embed.set_footer(text=f"{updated_text} • {global_text}")
+                await interaction.followup.send(embed=embed)
+                return
+
+            await interaction.followup.send(t('putometro.error.invalid_scope', gid), ephemeral=True)
+        except Exception as exc:
+            log.error(f"❌ Error en /putometro guild={gid}: {exc}")
+            await interaction.followup.send(t('putometro.error.load_failed', gid), ephemeral=True)
     
     @app_commands.command(name="streak", description=_T('cmd.streak.desc'))
     async def streak(self, interaction: discord.Interaction):
@@ -2079,6 +2619,7 @@ class PoleCog(commands.Cog):
         if not interaction.guild:
             await interaction.response.send_message(t('errors.command_server_only', None), ephemeral=True)
             return
+        await interaction.response.defer()
         
         from utils.scoring import get_current_season, get_season_info
         
@@ -2154,7 +2695,7 @@ class PoleCog(commands.Cog):
             )
         
         embed.set_footer(text=t('season.footer', gid))
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     
     @app_commands.command(name="history", description=_T('cmd.mystats.desc'))
     async def history(self, interaction: discord.Interaction):
@@ -2162,6 +2703,7 @@ class PoleCog(commands.Cog):
         if not interaction.guild:
             await interaction.response.send_message(t('errors.command_server_only', None), ephemeral=True)
             return
+        await interaction.response.defer()
         
         # Obtener badges del usuario
         badges = await self.db.get_user_badges(interaction.user.id, interaction.guild.id)
@@ -2236,16 +2778,21 @@ class PoleCog(commands.Cog):
             )
         
         embed.set_footer(text=t('season.footer', gid))
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     
     # [DEPRECATED] season_leaderboard eliminado. Usar /leaderboard con 'temporada'.
     
     # ==================== HELPERS DE TEMPORADA ====================
     
-    async def _send_season_change_announcement(self, old_season_id: str, new_season_id: str):
+    async def _send_season_change_announcement(
+        self,
+        old_season_id: str,
+        new_season_id: str,
+        target_guild_id: Optional[int] = None,
+    ):
         """
         🎬 POLE REWIND - Enviar resumen de año con estadísticas y celebración
-        Sistema de 7 mensajes: Intro + 4 categorías locales + 1 global condensado + cierre
+        Sistema de 8 mensajes: Intro + 5 categorías locales + 1 global condensado + cierre
         """
         from utils.scoring import get_season_info
         
@@ -2257,8 +2804,17 @@ class PoleCog(commands.Cog):
         
         # Obtener servidores configurados
         async with self.db.get_connection() as conn:
-            cursor = await conn.execute('SELECT guild_id, pole_channel_id FROM servers WHERE pole_channel_id IS NOT NULL')
-            servers = await cursor.fetchall()
+            if target_guild_id is None:
+                cursor = await conn.execute(
+                    'SELECT guild_id, pole_channel_id FROM servers WHERE pole_channel_id IS NOT NULL'
+                )
+                servers = await cursor.fetchall()
+            else:
+                cursor = await conn.execute(
+                    'SELECT guild_id, pole_channel_id FROM servers WHERE guild_id = ? AND pole_channel_id IS NOT NULL',
+                    (target_guild_id,)
+                )
+                servers = await cursor.fetchall()
         
         sent_count = 0
         for server in servers:
@@ -2296,6 +2852,8 @@ class PoleCog(commands.Cog):
                 # Obtener datos
                 local_rankings = await self._get_season_rankings_local(guild_id, old_season_id)
                 global_rankings = await self._get_season_rankings_global(old_season_id)
+                puta_rankings = await self.db.get_puta_user_leaderboard(guild_id, 3)
+                puta_total = await self.db.get_puta_guild_total(guild_id)
                 
                 # ==================== MENSAJE 2: 👑 MÁXIMOS ANOTADORES (Local) ====================
                 embed_points_local = discord.Embed(
@@ -2395,9 +2953,40 @@ class PoleCog(commands.Cog):
                 
                 embed_speed_local.set_footer(text=t('rewind.footer_hof', guild.id, season=old_season_id, tagline=t('rewind.tagline.speed', guild.id)))
                 await channel.send(embed=embed_speed_local)
+                await asyncio.sleep(1.5)
+
+                # ==================== MENSAJE 6: 🔥 MÁS PUTERO (Local) ====================
+                embed_puta_local = discord.Embed(
+                    title=t('rewind.local_puta_title', guild.id, server=guild.name),
+                    description=t('rewind.local_puta_desc', guild.id),
+                    color=discord.Color.purple(),
+                    timestamp=datetime.now(LOCAL_TZ)
+                )
+
+                if puta_rankings:
+                    for i, row in enumerate(puta_rankings[:3], 1):
+                        medal = '🥇' if i == 1 else '🥈' if i == 2 else '🥉'
+                        dedication = self._get_dedication_puta(i, guild.id)
+                        embed_puta_local.add_field(
+                            name=f"{medal} {dedication}",
+                            value=t('rewind.puta_value', guild.id, uid=int(row['user_id']), count=int(row['total_count'])),
+                            inline=False
+                        )
+                else:
+                    if embed_puta_local.description:
+                        embed_puta_local.description += "\n\n" + t('rewind.no_data', guild.id)
+
+                embed_puta_local.add_field(
+                    name=t('rewind.puta_total_label', guild.id),
+                    value=t('rewind.puta_total_value', guild.id, total=puta_total),
+                    inline=False
+                )
+
+                embed_puta_local.set_footer(text=t('rewind.footer_hof', guild.id, season=old_season_id, tagline=t('rewind.tagline.puta', guild.id)))
+                await channel.send(embed=embed_puta_local)
                 await asyncio.sleep(2)
                 
-                # ==================== MENSAJE 6: 🌍 HALL OF FAME GLOBAL (CONDENSADO) ====================
+                # ==================== MENSAJE 7: 🌍 HALL OF FAME GLOBAL (CONDENSADO) ====================
                 embed_global = discord.Embed(
                     title=t('rewind.global_title', guild.id),
                     description=t('rewind.global_desc', guild.id, season=old_season_id),
@@ -2446,7 +3035,7 @@ class PoleCog(commands.Cog):
                 await channel.send(embed=embed_global)
                 await asyncio.sleep(2)
                 
-                # ==================== MENSAJE 7: NUEVA TEMPORADA ====================
+                # ==================== MENSAJE 8: NUEVA TEMPORADA ====================
                 season_name = str(new_info['name'])  # Type assertion para Pylance
                 if is_first_season:
                     embed_new_season = discord.Embed(
@@ -2498,6 +3087,10 @@ class PoleCog(commands.Cog):
     def _get_dedication_speed(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Velocidad (local)"""
         return t(f'dedication.speed.{position}', guild_id)
+
+    def _get_dedication_puta(self, position: int, guild_id: int) -> str:
+        """Dedicatoria para categoría Putómetro (local)."""
+        return t(f'dedication.puta.{position}', guild_id)
     
     def _get_dedication_points_global(self, position: int, guild_id: int) -> str:
         """Dedicatoria para categoría Puntos (global)"""
@@ -2638,36 +3231,71 @@ class PoleCog(commands.Cog):
             'speed': top_speed
         }
     
-    async def send_opening_notification(self, guild_id: int, channel_id: int, ping_role_id: Optional[int], ping_mode: str):
+    async def send_opening_notification(
+        self,
+        guild_id: int,
+        channel_id: int,
+        ping_role_id: Optional[int],
+        ping_mode: str,
+        opening_dt: Optional[datetime] = None,
+        persist_sent_at: bool = True,
+        run_streak_reset: bool = True,
+    ):
         """
         Enviar notificación de apertura del pole
         """
         guild = self.bot.get_guild(guild_id)
         if not guild:
+            log.warning(f"⚠️ Notificación apertura: guild {guild_id} no disponible en caché")
+            return
+
+        await resolve_guild_language(guild_id, self.db)
+
+        channel = await self._resolve_text_channel(guild_id, channel_id)
+        if not channel:
+            log.warning(f"⚠️ Notificación apertura: canal {channel_id} no resoluble en guild {guild_id}")
             return
         
-        channel = guild.get_channel(channel_id)
-        if not channel or not isinstance(channel, discord.TextChannel):
-            return
-        
+        now_local = datetime.now(LOCAL_TZ)
+
         # CROSS-MIDNIGHT PROTECTION: Si la hora de apertura es nocturna y estamos en madrugada,
         # este es un envío tardío de ayer. No resetear rachas (el reset real viene con el nuevo día).
         server_config = await self.db.get_server_config(guild_id)
         daily_time = server_config.get('daily_pole_time') if server_config else None
         skip_reset = False
+        opening_reference: Optional[datetime] = _ensure_local_tz(opening_dt) if opening_dt else None
         if daily_time:
             try:
                 dh = int(str(daily_time).split(':')[0])
-                now_local = datetime.now(LOCAL_TZ)
                 if dh >= 20 and now_local.hour < 6:
                     skip_reset = True
                     log.info(f"🌙 [Notif] Omitiendo reset cross-midnight para guild {guild_id}")
+
+                if opening_reference is None:
+                    h, m, s = [int(x) for x in str(daily_time).split(':')]
+                    opening_reference = _opening_time_for_day(now_local, h, m, s)
             except Exception:
                 pass
+
+        # Detectar modo recuperación cuando la apertura real debió ocurrir bastante antes.
+        recovery_mode = False
+        if opening_reference is not None:
+            delay_seconds = (now_local - opening_reference).total_seconds()
+            recovery_mode = delay_seconds > 120
+
+        if recovery_mode:
+            delay_minutes = int(max(0, (now_local - opening_reference).total_seconds()) // 60) if opening_reference else 0
+            log.warning(
+                "⚠️ [Notif Recovery] guild=%s opening=%s now=%s delay=%smin",
+                guild_id,
+                opening_reference.isoformat() if opening_reference else "unknown",
+                now_local.isoformat(),
+                delay_minutes,
+            )
         
         # Antes de abrir: resetear rachas que realmente se perdieron (no hicieron ni pole ayer ni marranero hoy)
         # Usar try-except para evitar que un fallo aquí bloquee la notificación
-        if not skip_reset:
+        if run_streak_reset and not skip_reset:
             try:
                 await asyncio.wait_for(
                     self._reset_lost_streaks_before_opening(guild_id, channel_id),
@@ -2677,6 +3305,8 @@ class PoleCog(commands.Cog):
                 log.warning(f"⚠️ Timeout reseteando rachas en guild {guild_id} - continuando con notificación")
             except Exception as e:
                 log.error(f"⚠️ Error reseteando rachas antes de apertura en guild {guild_id}: {e}")
+        elif not run_streak_reset:
+            log.info(f"🧪 Notificación apertura en modo test: sin reset de rachas para guild {guild_id}")
 
         # Construir mensaje con ping opcional
         content = ""
@@ -2686,21 +3316,55 @@ class PoleCog(commands.Cog):
                 content = f"{role.mention} "
         elif ping_mode == 'everyone':
             content = "@everyone "
-        
+
+        title_key = 'notification.pole_open_recovery' if recovery_mode else 'notification.pole_open'
+        desc_key = 'notification.pole_open_recovery_desc' if recovery_mode else 'notification.pole_open_desc'
+        mode_key = 'notification.field.mode_recovery' if recovery_mode else 'notification.field.mode_normal'
+
         embed = discord.Embed(
-            title=t('notification.pole_open', guild_id),
-            description=t('notification.pole_open_desc', guild_id),
-            color=discord.Color.green(),
-            timestamp=datetime.now(LOCAL_TZ)
+            title=t(title_key, guild_id),
+            description=t(desc_key, guild_id),
+            color=discord.Color.orange() if recovery_mode else discord.Color.green(),
+            timestamp=now_local
         )
-        embed.set_footer(text=t('notification.pole_open_footer', guild_id))
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+
+        embed.add_field(
+            name=t('notification.field.command', guild_id),
+            value=t('notification.field.command_value', guild_id, command='pole'),
+            inline=True
+        )
+        embed.add_field(
+            name=t('notification.field.mode', guild_id),
+            value=t(mode_key, guild_id),
+            inline=True
+        )
+        if opening_reference is not None:
+            embed.add_field(
+                name=t('notification.field.opened_at', guild_id),
+                value=opening_reference.strftime('%H:%M:%S'),
+                inline=True
+            )
+
+        if recovery_mode and opening_reference is not None:
+            embed.set_footer(text=t('notification.recovery_footer', guild_id, time=opening_reference.strftime('%H:%M:%S')))
+        else:
+            embed.set_footer(text=t('notification.pole_open_footer', guild_id))
         
         try:
             await channel.send(content=content if content else None, embed=embed)
             # IMPORTANTE: Guardar timestamp de cuando realmente se envió la notificación
             # Esto se usará para calcular delays justos (por si llegó tarde por lag)
-            await self.db.set_notification_sent_at(guild_id, datetime.now(LOCAL_TZ).isoformat())
-            log.info(f"🔔 Notificación enviada y timestamp guardado para guild {guild_id}")
+            if persist_sent_at:
+                await self.db.set_notification_sent_at(guild_id, now_local.isoformat())
+            else:
+                log.info(f"🧪 Notificación apertura en modo test: sin persistir notification_sent_at para guild {guild_id}")
+            mode = "RECOVERY" if recovery_mode else "NORMAL"
+            if persist_sent_at:
+                log.info(f"🔔 Notificación {mode} enviada y timestamp guardado para guild {guild_id}")
+            else:
+                log.info(f"🔔 Notificación {mode} enviada en modo test para guild {guild_id}")
         except Exception as e:
             log.error(f"❌ Error enviando notificación a guild {guild_id}: {e}")
 
@@ -2717,9 +3381,12 @@ class PoleCog(commands.Cog):
         guild = self.bot.get_guild(guild_id)
         if not guild:
             return
-        channel = guild.get_channel(channel_id)
-        if not channel or not isinstance(channel, discord.TextChannel):
-            return
+
+        channel = await self._resolve_text_channel(guild_id, channel_id)
+        if channel is None:
+            log.warning(
+                f"⚠️ Reset rachas: canal {channel_id} no resoluble en guild {guild_id}; se ejecuta reset sin aviso público"
+            )
 
         yesterday = (datetime.now(LOCAL_TZ) - timedelta(days=1)).strftime('%Y-%m-%d')
         today = datetime.now(LOCAL_TZ).strftime('%Y-%m-%d')
@@ -2773,7 +3440,7 @@ class PoleCog(commands.Cog):
                 if member:
                     lost_members.append(member)
 
-        if lost_members:
+        if lost_members and channel:
             names_text = ", ".join(m.mention for m in lost_members[:10])
             more = len(lost_members) - 10
             if more > 0:
@@ -2790,6 +3457,10 @@ class PoleCog(commands.Cog):
                 )
             except Exception as e:
                 log.error(f"⚠️ Error avisando racha perdida en guild {guild_id}: {e}")
+        elif lost_members:
+            log.info(
+                f"ℹ️ Reset rachas aplicado en guild {guild_id} para {len(lost_members)} miembro(s) sin aviso de canal"
+            )
 
     # ==================== RESUMEN DE MEDIANOCHE ====================
     
@@ -2797,10 +3468,14 @@ class PoleCog(commands.Cog):
         """Enviar resumen diario para la fecha lógica indicada (YYYY-MM-DD)."""
         guild = self.bot.get_guild(guild_id)
         if not guild:
+            log.warning(f"⚠️ Resumen medianoche: guild {guild_id} no disponible en caché")
             return
-        
-        channel = guild.get_channel(channel_id)
-        if not channel or not isinstance(channel, discord.TextChannel):
+
+        await resolve_guild_language(guild_id, self.db)
+
+        channel = await self._resolve_text_channel(guild_id, channel_id)
+        if not channel:
+            log.warning(f"⚠️ Resumen medianoche: canal {channel_id} no resoluble en guild {guild_id}")
             return
         
         # Obtener poles del día a resumir (por defecto: ayer en horario local)
@@ -2863,11 +3538,31 @@ class PoleCog(commands.Cog):
                         })
         
         # Crear embed de resumen
+        at_risk_count = len(users_streak_at_risk)
+        elsewhere_count = len(users_pole_elsewhere)
         embed = discord.Embed(
             title=t('notification.daily_summary', guild_id),
             description=t('notification.daily_summary_desc', guild_id, count=len(yesterday_poles)),
-            color=discord.Color.dark_blue(),
+            color=discord.Color.red() if at_risk_count > 0 else discord.Color.dark_blue(),
             timestamp=datetime.now(LOCAL_TZ)
+        )
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+
+        embed.add_field(
+            name=t('summary.field.completed_count', guild.id),
+            value=f"**{len(yesterday_poles)}**",
+            inline=True
+        )
+        embed.add_field(
+            name=t('summary.field.risk_count', guild.id),
+            value=f"**{at_risk_count}**",
+            inline=True
+        )
+        embed.add_field(
+            name=t('summary.field.elsewhere_count', guild.id),
+            value=f"**{elsewhere_count}**",
+            inline=True
         )
         
         # Lista de jugadores que hicieron pole ayer (top 10)
@@ -2920,7 +3615,7 @@ class PoleCog(commands.Cog):
         embed.add_field(
             name=t('summary.new_day', guild.id),
             value=t('summary.new_day_desc', guild.id),
-            inline=False
+            inline=True
         )
         
         embed.set_footer(text=t('summary.footer', guild.id))

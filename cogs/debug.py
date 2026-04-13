@@ -468,6 +468,215 @@ class DebugCog(commands.Cog):
                 await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
 
     # ==================== MODIFICAR DATOS DE USUARIO ====================
+
+    @debug.command(name="notify_test", description="🔔 Probar notificaciones sin alterar BD")
+    @app_commands.describe(
+        tipo="Tipo de notificación",
+        recovery_minutes="Minutos de retraso simulado para recovery (solo apertura recovery)",
+        pole_type="Tipo de pole para preview UX (solo tipo pole)",
+        pole_delay_minutes="Delay en minutos para preview de pole (solo tipo pole)",
+        pole_streak="Racha mostrada en preview de pole (solo tipo pole)",
+        pole_position="Posición mostrada en preview de pole (solo tipo pole)",
+        pole_streak_broken="Mostrar bloque de racha rota (solo tipo pole)",
+        rewind_old_season="Temporada antigua para preview rewind (ej: 2025 o season_1)",
+        rewind_new_season="Temporada nueva para preview rewind (ej: season_1 o season_2)"
+    )
+    @app_commands.choices(tipo=[
+        app_commands.Choice(name="🟢 Apertura normal (sin side effects)", value="open"),
+        app_commands.Choice(name="🟠 Apertura recovery (sin side effects)", value="recovery"),
+        app_commands.Choice(name="🌙 Resumen de ayer", value="summary"),
+        app_commands.Choice(name="🏁 Pole capturado (preview UX)", value="pole"),
+        app_commands.Choice(name="🎬 Pole Rewind (preview)", value="rewind"),
+    ], pole_type=[
+        app_commands.Choice(name="💎 Critical", value="critical"),
+        app_commands.Choice(name="⚡ Fast", value="fast"),
+        app_commands.Choice(name="✅ Normal", value="normal"),
+        app_commands.Choice(name="⏰ Late", value="late"),
+        app_commands.Choice(name="🐷 Marranero", value="marranero"),
+    ])
+    @debug_only()
+    async def notify_test(
+        self,
+        interaction: discord.Interaction,
+        tipo: str,
+        recovery_minutes: Optional[app_commands.Range[int, 1, 180]] = 10,
+        pole_type: Optional[str] = "normal",
+        pole_delay_minutes: Optional[app_commands.Range[int, 0, 1440]] = 25,
+        pole_streak: Optional[app_commands.Range[int, 1, 999]] = 7,
+        pole_position: Optional[app_commands.Range[int, 1, 50]] = 1,
+        pole_streak_broken: Optional[bool] = False,
+        rewind_old_season: Optional[str] = None,
+        rewind_new_season: Optional[str] = None,
+    ):
+        """Disparar notificaciones de prueba usando la lógica real del bot."""
+        if not interaction.guild:
+            await interaction.response.send_message("❌ Solo en servidores.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        gid = interaction.guild.id
+        cfg = await self.db.get_server_config(gid)
+        if not cfg:
+            await interaction.followup.send("❌ No hay configuración de servidor en BD.", ephemeral=True)
+            return
+
+        channel_id = cfg.get('pole_channel_id')
+        if not channel_id:
+            await interaction.followup.send("❌ El servidor no tiene canal de pole configurado.", ephemeral=True)
+            return
+
+        pole_cog = self.bot.get_cog('PoleCog')
+        if not pole_cog:
+            await interaction.followup.send("❌ No se encontró PoleCog cargado.", ephemeral=True)
+            return
+
+        if tipo in ("open", "recovery"):
+            send_fn = getattr(pole_cog, 'send_opening_notification', None)
+            if not callable(send_fn):
+                await interaction.followup.send("❌ PoleCog no expone send_opening_notification.", ephemeral=True)
+                return
+
+            opening_reference = datetime.now(LOCAL_TZ)
+            if tipo == "recovery":
+                delay_min = int(recovery_minutes or 10)
+                opening_reference = opening_reference - timedelta(minutes=delay_min)
+
+            send_result = send_fn(
+                gid,
+                int(channel_id),
+                cfg.get('ping_role_id'),
+                str(cfg.get('ping_mode', 'none')),
+                opening_dt=opening_reference,
+                persist_sent_at=False,
+                run_streak_reset=False,
+            )
+            if inspect.iscoroutine(send_result):
+                await send_result
+
+            channel_mention = f"<#{int(channel_id)}>"
+            if tipo == "recovery":
+                await interaction.followup.send(
+                    f"✅ Notificación RECOVERY enviada a {channel_mention} en modo test (sin writes de BD, sin reset de rachas).",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    f"✅ Notificación OPEN enviada a {channel_mention} en modo test (sin writes de BD, sin reset de rachas).",
+                    ephemeral=True,
+                )
+            return
+
+        if tipo == "summary":
+            summary_fn = getattr(pole_cog, 'send_midnight_summary', None)
+            if not callable(summary_fn):
+                await interaction.followup.send("❌ PoleCog no expone send_midnight_summary.", ephemeral=True)
+                return
+
+            summary_date = (datetime.now(LOCAL_TZ) - timedelta(days=1)).strftime('%Y-%m-%d')
+            summary_result = summary_fn(gid, int(channel_id), summary_date)
+            if inspect.iscoroutine(summary_result):
+                await summary_result
+
+            await interaction.followup.send(
+                f"✅ Resumen de prueba lanzado para {summary_date} en <#{int(channel_id)}> (solo lectura de BD; no modifica estado).",
+                ephemeral=True,
+            )
+            return
+
+        if tipo == "pole":
+            preview_fn = getattr(pole_cog, 'send_pole_notification_preview', None)
+            if not callable(preview_fn):
+                await interaction.followup.send("❌ PoleCog no expone send_pole_notification_preview.", ephemeral=True)
+                return
+
+            target_channel = interaction.guild.get_channel(int(channel_id))
+            if not isinstance(target_channel, discord.TextChannel):
+                fallback_channel = self.bot.get_channel(int(channel_id))
+                if isinstance(fallback_channel, discord.TextChannel):
+                    target_channel = fallback_channel
+
+            if not isinstance(target_channel, discord.TextChannel):
+                await interaction.followup.send("❌ No se pudo resolver el canal de pole para preview.", ephemeral=True)
+                return
+
+            if not isinstance(interaction.user, discord.Member):
+                await interaction.followup.send("❌ Este preview requiere ejecutarse dentro de un servidor.", ephemeral=True)
+                return
+
+            selected_type = str(pole_type or "normal")
+            streak_val = int(pole_streak or 7)
+            delay_val = int(pole_delay_minutes or 25)
+            position_val = int(pole_position or 1)
+            streak_broken_val = bool(pole_streak_broken)
+
+            points_base, multiplier, points_earned = calculate_points(selected_type, streak_val)
+
+            preview_result = preview_fn(
+                interaction.guild,
+                target_channel,
+                interaction.user,
+                selected_type,
+                position_val,
+                points_base,
+                multiplier,
+                points_earned,
+                streak_val,
+                streak_broken_val,
+                datetime.now(LOCAL_TZ),
+                delay_val,
+            )
+            if inspect.iscoroutine(preview_result):
+                await preview_result
+
+            await interaction.followup.send(
+                f"✅ Preview de notificación de pole enviado en <#{int(channel_id)}> (sin writes de BD).",
+                ephemeral=True,
+            )
+            return
+
+        if tipo == "rewind":
+            rewind_fn = getattr(pole_cog, '_send_season_change_announcement', None)
+            if not callable(rewind_fn):
+                await interaction.followup.send("❌ PoleCog no expone _send_season_change_announcement.", ephemeral=True)
+                return
+
+            def infer_previous_season_id(new_sid: str) -> str:
+                if new_sid.startswith("season_"):
+                    try:
+                        num = int(new_sid.split("_")[1])
+                        if num <= 1:
+                            return "2025"
+                        return f"season_{num - 1}"
+                    except Exception:
+                        return "2025"
+                if new_sid == "preseason":
+                    return "2025"
+                if new_sid.isdigit():
+                    return str(int(new_sid) - 1)
+                return "2025"
+
+            new_sid = str(rewind_new_season or get_current_season())
+            old_sid = str(rewind_old_season or infer_previous_season_id(new_sid))
+
+            try:
+                rewind_result = rewind_fn(old_sid, new_sid, target_guild_id=gid)
+                if inspect.iscoroutine(rewind_result):
+                    await rewind_result
+            except Exception as exc:
+                await interaction.followup.send(
+                    f"❌ Error lanzando POLE REWIND preview ({old_sid} → {new_sid}): {exc}",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.followup.send(
+                f"✅ POLE REWIND preview lanzado en este guild ({old_sid} → {new_sid}).",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send("❌ Tipo no soportado.", ephemeral=True)
     
     @debug.command(name="modify_user", description="✏️ Modificar datos de un usuario")
     @app_commands.describe(

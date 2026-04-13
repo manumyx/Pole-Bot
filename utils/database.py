@@ -14,7 +14,7 @@ LOCAL_TZ = ZoneInfo('Europe/Madrid')
 
 class Database:
     # Versión actual del schema - incrementar con cada migración
-    SCHEMA_VERSION = 7  # v1: inicial, v2: pole_date, v3: last_daily_pole_time, v4: impatient_attempts, v5: global_users, v6: i18n (language), v7: notification_sent_at
+    SCHEMA_VERSION = 8  # v1: inicial, v2: pole_date, v3: last_daily_pole_time, v4: impatient_attempts, v5: global_users, v6: i18n (language), v7: notification_sent_at, v8: puta_counter
 
     def __init__(self, db_path: str = "data/pole_bot.db"):
         self.db_path = db_path
@@ -152,11 +152,24 @@ class Database:
                 )
             ''')
 
+            # ==================== TABLA PUTA_COUNTER ====================
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS puta_counter (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    total_count INTEGER DEFAULT 0,
+                    updated_at TEXT,
+                    PRIMARY KEY (guild_id, user_id)
+                )
+            ''')
+
             # ==================== ÍNDICES ====================
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_users_guild ON users(guild_id)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_poles_user ON poles(user_id, guild_id)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_poles_date ON poles(created_at)')
             await conn.execute('CREATE INDEX IF NOT EXISTS idx_poles_pole_date ON poles(pole_date)')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_puta_counter_guild ON puta_counter(guild_id, total_count DESC)')
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_puta_counter_guild_count_user ON puta_counter(guild_id, total_count DESC, user_id ASC)')
             try:
                 await conn.execute('CREATE INDEX IF NOT EXISTS idx_season_stats_lookup ON season_stats(user_id, guild_id, season_id)')
             except Exception:
@@ -420,6 +433,25 @@ class Database:
 
                 await self._set_schema_version(conn, 7, "Sistema de delays justos (desde notificación real)")
                 self.log.info("✅ Migración v7: Delays ahora se calculan desde notificación enviada, no hora programada")
+
+            # ==================== MIGRACIÓN v8: puta_counter ====================
+            if current_version < 8:
+                self.log.info("Migración v8: Activando contador global de putómetro...")
+
+                await conn.execute('''
+                    CREATE TABLE IF NOT EXISTS puta_counter (
+                        guild_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        total_count INTEGER DEFAULT 0,
+                        updated_at TEXT,
+                        PRIMARY KEY (guild_id, user_id)
+                    )
+                ''')
+                await conn.execute('CREATE INDEX IF NOT EXISTS idx_puta_counter_guild ON puta_counter(guild_id, total_count DESC)')
+                await conn.execute('CREATE INDEX IF NOT EXISTS idx_puta_counter_guild_count_user ON puta_counter(guild_id, total_count DESC, user_id ASC)')
+
+                await self._set_schema_version(conn, 8, "Sistema de putómetro por usuario/guild")
+                self.log.info("✅ Migración v8: Putómetro listo")
 
     async def _auto_initialize_seasons(self):
         """
@@ -1100,6 +1132,173 @@ class Database:
                 LIMIT ?
             ''', (limit,))
             return [dict(row) for row in await cursor.fetchall()]
+
+    # ==================== MÉTODOS PUTÓMETRO ====================
+
+    async def increment_puta_counter(self, guild_id: int, user_id: int, amount: int = 1) -> Tuple[int, int]:
+        """Incrementar contador de putómetro y devolver (total_usuario, total_guild)."""
+        increment = max(1, int(amount))
+        now_iso = datetime.now(LOCAL_TZ).isoformat()
+
+        async with self.get_connection() as conn:
+            await conn.execute('''
+                INSERT INTO puta_counter (guild_id, user_id, total_count, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    total_count = total_count + excluded.total_count,
+                    updated_at = excluded.updated_at
+            ''', (guild_id, user_id, increment, now_iso))
+
+            cursor = await conn.execute('''
+                SELECT total_count
+                FROM puta_counter
+                WHERE guild_id = ? AND user_id = ?
+            ''', (guild_id, user_id))
+            user_row = await cursor.fetchone()
+            user_total = int(user_row['total_count']) if user_row else 0
+
+            cursor = await conn.execute('''
+                SELECT COALESCE(SUM(total_count), 0) as guild_total
+                FROM puta_counter
+                WHERE guild_id = ?
+            ''', (guild_id,))
+            guild_row = await cursor.fetchone()
+            guild_total = int(guild_row['guild_total']) if guild_row else 0
+
+            return user_total, guild_total
+
+    async def get_puta_user_count(self, guild_id: int, user_id: int) -> int:
+        """Obtener total de putómetro para un usuario en un guild."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT total_count
+                FROM puta_counter
+                WHERE guild_id = ? AND user_id = ?
+            ''', (guild_id, user_id))
+            row = await cursor.fetchone()
+            return int(row['total_count']) if row else 0
+
+    async def get_puta_guild_total(self, guild_id: int) -> int:
+        """Obtener total de putómetro acumulado en un guild."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT COALESCE(SUM(total_count), 0) as guild_total
+                FROM puta_counter
+                WHERE guild_id = ?
+            ''', (guild_id,))
+            row = await cursor.fetchone()
+            return int(row['guild_total']) if row else 0
+
+    async def get_puta_user_leaderboard(self, guild_id: int, limit: int = 10) -> List[Dict]:
+        """Top usuarios de putómetro en un guild."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT user_id, total_count
+                FROM puta_counter
+                WHERE guild_id = ? AND total_count > 0
+                ORDER BY total_count DESC, user_id ASC
+                LIMIT ?
+            ''', (guild_id, limit))
+            return [dict(row) for row in await cursor.fetchall()]
+
+    async def get_puta_guild_leaderboard(self, limit: int = 10) -> List[Dict]:
+        """Top guilds de putómetro (agregado global)."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT guild_id,
+                       SUM(total_count) as total_count,
+                       COUNT(*) as tracked_users
+                FROM puta_counter
+                GROUP BY guild_id
+                HAVING total_count > 0
+                ORDER BY total_count DESC, guild_id ASC
+                LIMIT ?
+            ''', (limit,))
+            return [dict(row) for row in await cursor.fetchall()]
+
+    async def get_puta_user_rank(self, guild_id: int, user_id: int) -> Optional[int]:
+        """Ranking (1-based) de un usuario en putómetro local del guild."""
+        user_total = await self.get_puta_user_count(guild_id, user_id)
+        if user_total <= 0:
+            return None
+
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT COUNT(*) as higher_count
+                FROM puta_counter
+                WHERE guild_id = ? AND total_count > ?
+            ''', (guild_id, user_total))
+            row = await cursor.fetchone()
+            higher_count = int(row['higher_count']) if row else 0
+            return higher_count + 1
+
+    async def get_puta_boss_flash_context(self, guild_id: int, user_id: int, top_limit: int = 3) -> Dict[str, Any]:
+        """Snapshot consistente para boss mode: rank del usuario + top N del guild."""
+        safe_limit = max(1, min(int(top_limit), 10))
+
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                WITH ranked AS (
+                    SELECT
+                        user_id,
+                        total_count,
+                        ROW_NUMBER() OVER (ORDER BY total_count DESC, user_id ASC) AS pos
+                    FROM puta_counter
+                    WHERE guild_id = ? AND total_count > 0
+                )
+                SELECT
+                    COALESCE((SELECT pos FROM ranked WHERE user_id = ?), 0) AS user_rank,
+                    COALESCE((SELECT total_count FROM ranked WHERE user_id = ?), 0) AS user_total,
+                    (SELECT COUNT(*) FROM ranked) AS total_users
+            ''', (guild_id, user_id, user_id))
+            summary = await cursor.fetchone()
+
+            cursor = await conn.execute('''
+                SELECT user_id, total_count
+                FROM puta_counter
+                WHERE guild_id = ? AND total_count > 0
+                ORDER BY total_count DESC, user_id ASC
+                LIMIT ?
+            ''', (guild_id, safe_limit))
+            top_rows = [dict(row) for row in await cursor.fetchall()]
+
+        return {
+            'user_rank': int(summary['user_rank']) if summary else 0,
+            'user_total': int(summary['user_total']) if summary else 0,
+            'total_users': int(summary['total_users']) if summary else 0,
+            'top': top_rows,
+        }
+
+    async def get_puta_guild_rank(self, guild_id: int) -> Optional[int]:
+        """Ranking (1-based) de un guild en el putómetro global."""
+        guild_total = await self.get_puta_guild_total(guild_id)
+        if guild_total <= 0:
+            return None
+
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT COUNT(*) as higher_count
+                FROM (
+                    SELECT guild_id, SUM(total_count) as guild_total
+                    FROM puta_counter
+                    GROUP BY guild_id
+                ) ranked
+                WHERE ranked.guild_total > ?
+            ''', (guild_total,))
+            row = await cursor.fetchone()
+            higher_count = int(row['higher_count']) if row else 0
+            return higher_count + 1
+
+    async def get_puta_guilds_count(self) -> int:
+        """Cantidad de guilds con actividad en putómetro global."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute('''
+                SELECT COUNT(DISTINCT guild_id) as guilds_count
+                FROM puta_counter
+                WHERE total_count > 0
+            ''')
+            row = await cursor.fetchone()
+            return int(row['guilds_count']) if row else 0
 
     # ==================== MÉTODOS DEBUG ====================
 

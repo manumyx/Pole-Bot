@@ -44,6 +44,7 @@ class ServerScheduleConfig:
     guild_id: int
     pole_range_start: int
     pole_range_end: int
+    notify_opening: int
     daily_pole_time: Optional[str]
     last_daily_pole_time: Optional[str]
 
@@ -125,6 +126,20 @@ class PoleScheduler:
                 self._schedule_opening_job(cfg.guild_id, opening_dt)
             else:
                 self._phase_by_guild[cfg.guild_id] = PolePhase.ABIERTA_JUGANDO
+
+                # Recuperación tras reinicio: si ya pasó la apertura y no hubo callback hoy,
+                # ejecutar apertura una vez para no perder notificación/resetes asociados.
+                if self._on_open_pole is not None and int(cfg.notify_opening) != 0:
+                    should_recover = await self._should_recover_opening_callback(
+                        guild_id=cfg.guild_id,
+                        target_date=today,
+                    )
+                    if should_recover:
+                        self._log.warning(
+                            "Recovering missed opening callback for guild %s (startup after opening time)",
+                            cfg.guild_id,
+                        )
+                        await self._run_opening_job(cfg.guild_id, opening_dt.isoformat())
 
     def get_phase(self, guild_id: int) -> PolePhase:
         return self._phase_by_guild.get(guild_id, PolePhase.CERRADA_ESPERANDO_APERTURA)
@@ -224,7 +239,7 @@ class PoleScheduler:
         async with self._db.get_connection() as conn:
             cursor = await conn.execute(
                 """
-                SELECT guild_id, pole_range_start, pole_range_end,
+                SELECT guild_id, pole_range_start, pole_range_end, notify_opening,
                        daily_pole_time, last_daily_pole_time
                 FROM servers
                 WHERE pole_channel_id IS NOT NULL
@@ -241,11 +256,24 @@ class PoleScheduler:
                     guild_id=int(row["guild_id"]),
                     pole_range_start=start,
                     pole_range_end=end,
+                    notify_opening=int(row["notify_opening"] or 1),
                     daily_pole_time=row["daily_pole_time"],
                     last_daily_pole_time=row["last_daily_pole_time"],
                 )
             )
         return configs
+
+    async def _should_recover_opening_callback(self, guild_id: int, target_date: date) -> bool:
+        """Determinar si falta callback de apertura para el día objetivo."""
+        sent_at = await self._db.get_notification_sent_at(guild_id)
+        if not sent_at:
+            return True
+
+        try:
+            sent_dt = self._ensure_local_tz(datetime.fromisoformat(str(sent_at)))
+            return sent_dt.date() != target_date
+        except Exception:
+            return True
 
     def _generate_opening_datetime(
         self, cfg: ServerScheduleConfig, target_date: date

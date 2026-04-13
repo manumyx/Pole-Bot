@@ -25,6 +25,9 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'cmd.season.desc': 'Ver información de la temporada actual y tu progreso',
         'cmd.polehelp.desc': 'Ver información sobre cómo funciona el bot',
         'cmd.mystats.desc': 'Ver tu historial de temporadas y colección de badges',
+        'cmd.putometro.desc': 'Ver el putómetro: ranking local de usuarios y global de guilds',
+        'cmd.putometro.scope_param': 'Alcance del ranking',
+        'cmd.putometro.limit_param': 'Número de posiciones',
         
         # Describe params
         'cmd.leaderboard.scope_describe': 'Alcance del ranking: local (este servidor) o global (todos los servidores)',
@@ -46,6 +49,8 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'choice.personas': 'Personas',
         'choice.servidores': 'Servidores',
         'choice.rachas': 'Rachas',
+        'choice.putometro.scope.local': 'Local',
+        'choice.putometro.scope.global': 'Global',
         
         # ==================== SETTINGS ====================
         'settings.title': '⚙️ Configuración del Pole Bot',
@@ -171,9 +176,13 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.field.streak_multi': '{emoji} Racha (x{multiplier})',
         'pole.field.streak_days': '{days} días',
         'pole.field.total_earned': '✨ Total Ganado',
+        'pole.field.streak_status': '🔥 Multiplicador',
+        'pole.field.streak_hot_value': '{emoji} En racha: **x{multiplier}**',
+        'pole.field.streak_cold_value': '{emoji} Calentando: **x{multiplier}**',
         'pole.field.broken_streak': '💔 Racha Anterior',
-        'pole.field.broken_streak_desc': 'Conservas el 20% de tu racha anterior',
+        'pole.field.broken_streak_desc': 'Racha anterior a cero. Hoy vuelves a empezar, máquina.',
         'pole.field.broken_streak_title': '💔 Racha Rota',
+        'pole.notification.author': '{user} entró a romper el chat',
         
         # Pole - Notification descriptions (con variaciones aleatorias)
         'pole.notification.description_critical': [
@@ -186,7 +195,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} 💎 {delay}. Te has comido el pole, crack.',
             '{mention} 🚀 CRÍTICO en {delay}. Nadie te para.',
             '{mention} ⚡ {delay} de CRÍTICO. Así da gusto.',
-            '{mention} 💥 CRÍTICO brutal: {delay}. Eres un puto crack.',
+            '{mention} 💥 CRÍTICO brutal: {delay}. Estás intratable.',
         ],
         'pole.notification.description_fast': [
             '{mention} 🏎️ Pole rápido en {delay}. Bien pillado.',
@@ -196,7 +205,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} <a:fire:1440018375144374302> {delay}. Muy fino bro.',
             '{mention} ⚡ Pole en {delay}. Esa velocidad me gusta.',
             '{mention} 🏎️ {delay}... Vas sobrao.',
-            '{mention} 💨 Veloz ({delay}). Sigue así campéon.',
+            '{mention} 💨 Veloz ({delay}). Sigue así campeón.',
         ],
         'pole.notification.description_normal': [
             '{mention} ✅ Pole conseguido en {delay}.',
@@ -213,15 +222,15 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} ⏰ Pole en modo tarde ({delay}).',
         ],
         'pole.notification.description_marranero': [
-            '{mention} 🐷 Pole marranero... {delay} tarde. Mejor tarde que nunca.',
-            '{mention} 🐷 Marranero: {delay}. Mañana madruga más.',
-            '{mention} 🐷 {delay} de retraso. Vaya sueño llevas.',
-            '{mention} 🐷 Marranero en {delay}. Al menos viniste.',
-            '{mention} 🐷 {delay} tarde... Eres un marrano tío.',
-            '{mention} 🐷 MARRANERO en {delay}. Qué vergüenza.',
-            '{mention} 🐷 {delay} de retraso. Te pasaste de rosca.',
-            '{mention} 🐷 Marranero ({delay}). Vaya jeta que tienes.',
-            '{mention} 🐷 {delay}... Te dormiste pero bien.',
+            '{mention} 🐷 Marranero en {delay}. Puntos hay, gloria no.',
+            '{mention} 🐷 Llegaste en {delay}. Hoy sobrevives, mañana compites.',
+            '{mention} 🐷 {delay} tarde. El chat no olvida este sueño.',
+            '{mention} 🐷 Marranero: {delay}. Has salvado la racha por los pelos.',
+            '{mention} 🐷 {delay} de retraso. Entrada dramática, cero épica.',
+            '{mention} 🐷 MODO MARRANERO en {delay}. Toca remontar orgullo.',
+            '{mention} 🐷 {delay} tarde. Mañana toca revancha.',
+            '{mention} 🐷 Marranero ({delay}). La alarma ganó esta ronda.',
+            '{mention} 🐷 {delay}. Pole cobrado, ego tocado.',
         ],
         
         # Pole - Footers with personality
@@ -229,7 +238,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.footer.fast': 'vas servido 💪',
         'pole.footer.normal': 'bien pillado 👌',
         'pole.footer.late': 'más vale tarde que nunca ⏰',
-        'pole.footer.marranero': 'mañana madruga más 🥱',
+        'pole.footer.marranero': 'te salvaste por los pelos 🐷',
         
         # ==================== PROFILE ====================
         'profile.title': '📊 Estadísticas de {user}',
@@ -238,6 +247,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'profile.desc_global': '*Datos combinados de todos los servidores*',
         'profile.desc_local': '*Datos de este servidor únicamente*',
         'profile.no_data': '❌ {user} no tiene datos todavía. ¡Haz tu primer pole!',
+        'profile.no_data_global': '❌ {mention} sigue en modo siesta global. Toca estrenar marcador.',
         'profile.no_data_local': '❌ {mention} no ha hecho ningún pole en este servidor.',
         
         # Profile fields
@@ -425,11 +435,17 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'ui.represent.none': '*Ningún servidor configurado*',
         
         # ==================== NOTIFICACIONES ====================
-        'notification.pole_open': '🔔 POLE ABIERTO',
-        'notification.pole_open_recovery': '🔔 POLE ABIERTO (Recuperación)',
-        'notification.pole_open_recovery_desc': '⚠️ El bot estuvo offline durante la apertura programada.\nEscribe **pole** ahora para ganar puntos 🏁',
-        'notification.pole_open_desc': 'Llegó la hora: suelta ese **pole** y suma puntos 🏁\nEl primero manda, el resto acompaña.',
-        'notification.pole_open_footer': 'Que empiece la poleada ✨',
+        'notification.pole_open': '🚨 Se abrió el pole, espabila',
+        'notification.pole_open_recovery': '🚨 Pole abierto (con retrasito)',
+        'notification.pole_open_recovery_desc': '⚠️ Llegamos tarde, no te voy a mentir.\nAún puedes soltar **pole** y rascar puntos.',
+        'notification.pole_open_desc': 'Ya está abierto.\nEscribe **pole** antes de que te lo quiten en la cara.',
+        'notification.pole_open_footer': 'Corre ahora o luego no llores.',
+        'notification.field.command': '⌨️ Comando',
+        'notification.field.command_value': 'Suelta **{command}** aquí, sin poesía',
+        'notification.field.mode': '🎯 Estado',
+        'notification.field.mode_normal': 'Normal (sin drama)',
+        'notification.field.mode_recovery': 'Recovery (llegamos tarde)',
+        'notification.field.opened_at': '🕒 Referencia de apertura',
         'notification.streak_lost': '💔 Racha perdida',
         'notification.streak_lost_desc': '{names}\nLa racha se ha reiniciado por no completar ayer.',
         'notification.daily_summary': '🌃 Resumen del Día',
@@ -462,6 +478,75 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'leaderboard.entry.members': '👥 {count} miembros',
         'leaderboard.entry.current_streak': 'Actual: **{current}** días',
         'leaderboard.entry.best_streak': 'Mejor: **{best}** días',
+
+        # ==================== PUTOMETRO ====================
+        'putometro.trigger.hit': '📈 {mention}, metiste **{message_count}** en este mensaje. Tu total: **{user_count}** • Guild: **{guild_total}**.',
+        'putometro.trigger.title': [
+            '🧨 PUTÍMETRO DESBLOQUEADO',
+            '📟 ALERTA: SE CALENTÓ EL CHAT',
+            '🎛️ MODO PUTOACTIVO ON',
+            '🚨 CAOS LÉXICO DETECTADO',
+            '🧂 EL PUTÍMETRO PIDE MÁS',
+        ],
+        'putometro.trigger.desc': [
+            '{mention} acaba de soltar **{message_count}** en una sola línea. Qué barbaridad.',
+            '{mention} metió **{message_count}** de golpe. Finura cero, espectáculo máximo.',
+            '{mention} ha tirado **{message_count}** en este mensaje. El chat en llamas.',
+            '{mention} spawneó **{message_count}** de una. Nivel drama desbloqueado.',
+        ],
+        'putometro.trigger.field.message': '⚡ Combo del mensaje',
+        'putometro.trigger.field.user_total': '🧍 Marcador personal',
+        'putometro.trigger.field.guild_total': '🏰 Total del guild',
+        'putometro.trigger.field.mode': '🎭 Diagnóstico',
+        'putometro.trigger.value.message_count': '```+{message_count}```',
+        'putometro.trigger.value.user_total': '```{user_count}```',
+        'putometro.trigger.value.guild_total': '```{guild_total}```',
+        'putometro.trigger.mode.warmup': 'Calentando motores. Todavía hay margen para liarla más.',
+        'putometro.trigger.mode.chaos': 'Modo caos. Has venido a hacer ruido, no amigos.',
+        'putometro.trigger.mode.nuclear': 'Modo nuclear. Se recomienda evacuar el canal.',
+        'putometro.trigger.mode.veteran': 'Veterano del desastre. Esto ya es oficio.',
+        'putometro.trigger.mode.boss': 'BOSS MODE activo. El chat te mira con miedo y respeto.',
+        'putometro.trigger.field.milestone': '🏆 Hito desbloqueado',
+        'putometro.trigger.milestone.value': 'Has cruzado **{milestone}**. Marcador actual: **{user_count}**.',
+        'putometro.trigger.field.ranking_flash': '📊 Ranking flash',
+        'putometro.trigger.ranking.you': 'Tu puesto: **#{rank}/{total_users}** • Total: **{user_total}**\n\n**Top caliente:**\n{top}',
+        'putometro.trigger.ranking.top_entry': '#{position} {mention} — **{count}**',
+        'putometro.trigger.footer': [
+            'Estadística oficial del caos • Sigue así, fenómeno',
+            'El contador no juzga, solo humilla en público',
+            'Auditoría del drama completada con éxito',
+            'Métrica absurda, gloria absoluta',
+        ],
+        'putometro.trigger.footer.milestone': 'Subiste de nivel: {milestone}. Sigue tirando del carro.',
+        'putometro.trigger.footer.boss': 'Boss mode en cooldown. Aprovecha tu minuto de gloria.',
+        'putometro.trigger.footer.boss_milestone': 'Boss mode + hito en la misma jugada. Qué animal.',
+        'putometro.rank.local.title': '📊 Putómetro Local de {server}',
+        'putometro.rank.local.desc': 'Top del server en modo cachondeo sano. Aquí manda el contador.',
+        'putometro.rank.local.field.top': '🏆 Top {limit}',
+        'putometro.rank.local.field.you': '🙋 Tu marcador',
+        'putometro.rank.local.field.total': '🧮 Total del guild',
+        'putometro.rank.local.entry': '#{position} {mention} — {count}',
+        'putometro.rank.local.you_value': '{mention}: {user_count} • Puesto #{position}',
+        'putometro.rank.local.you_none': '{mention}: todavía no has encendido el putómetro.',
+        'putometro.rank.local.total_value': '{guild_total} acumuladas en {server}',
+        'putometro.rank.global.title': '🌍 Ranking Global de Guilds',
+        'putometro.rank.global.desc': 'Tabla mundial de guilds. Aquí se decide el guild más putero.',
+        'putometro.rank.global.field.champion': '👑 Guild más putero',
+        'putometro.rank.global.field.top': '🏆 Top {limit} guilds',
+        'putometro.rank.global.field.current': '📍 Tu guild',
+        'putometro.rank.global.entry': '#{position} {guild_name} — {count}',
+        'putometro.rank.global.champion_value': '{guild_name} lidera con {count}',
+        'putometro.rank.global.current_value': '{guild_name}: #{position} • {count}',
+        'putometro.rank.global.current_none': '{guild_name}: todavía no aparece en el ranking global.',
+        'putometro.empty.local': 'Todavía no hay registros en este servidor. El putómetro sigue en cero.',
+        'putometro.empty.global': 'Todavía no hay guilds en el ranking global. Nadie ha encendido el putómetro.',
+        'putometro.error.server_only': 'Este comando va solo en servidores.',
+        'putometro.error.invalid_scope': 'Alcance no válido. Usa local o global.',
+        'putometro.error.load_failed': 'No pude cargar el putómetro ahora mismo. Prueba otra vez en un momento.',
+        'putometro.footer.local': 'Tip: cambia a alcance global para comparar guilds',
+        'putometro.footer.global': 'Guilds en competencia: {guilds_count}',
+        'putometro.footer.updated': 'Actualizado: {time}',
+        'putometro.guild.unknown': 'Guild {target_id}',
         
         # ==================== PROFILE ====================
         'profile.title.global': '🌍 Perfil Global de {user}',
@@ -485,12 +570,6 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'profile.streak.current_title': '{emoji} Racha Actual',
         'profile.streak.current_value': '**{days}** días consecutivos\nMultiplicador: **x{multiplier:.1f}**',
         
-        # Profile - POLE REWIND Hall of Fame values
-        'rewind.points_value': '<@{uid}> - **{points:,}** pts',
-        'rewind.poles_value': '<@{uid}> - **{count}** poles',
-        'rewind.streak_value': '<@{uid}> - **{streak}** días consecutivos',
-        'rewind.speed_value': '<@{uid}> - **{delay:.1f}** min promedio',
-        
         # ==================== HISTORY ====================
         'history.title': '📜 Historial de Poles - {user}',
         'history.no_poles': '❌ Aún no has hecho ningún pole.',
@@ -507,7 +586,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'help.streaks': '<a:fire:1440018375144374302> Sistema de Rachas',
         'help.streaks_desc': 'Haz pole días consecutivos para aumentar tu multiplicador\n• 7 días: x1.1\n• 30 días: x1.4\n• 90 días: x1.8\n• 300 días: x2.5 (máximo)',
         'help.commands': '⚙️ Comandos',
-        'help.commands_desc': '`/profile` - Ver tu perfil y estadísticas\n`/leaderboard` - Ver rankings (local/global, personas/servidores)\n`/streak` - Info detallada de tu racha\n`/season` - Ver temporada actual y tu progreso\n`/history` - Ver badges y temporadas pasadas\n`/settings` - Configurar el bot (admins)\n`/polehelp` - Ver esta ayuda',
+        'help.commands_desc': '`/profile` - Ver tu perfil y estadísticas\n`/leaderboard` - Ver rankings (local/global, personas/servidores)\n`/putometro` - Ver ranking putómetro (local/global)\n`/streak` - Info detallada de tu racha\n`/season` - Ver temporada actual y tu progreso\n`/history` - Ver badges y temporadas pasadas\n`/settings` - Configurar el bot (admins)\n`/polehelp` - Ver esta ayuda',
         'help.footer': '¡Suerte y que gane el más rápido! 🔥',
         
         # ==================== SEASON ====================
@@ -559,6 +638,8 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'rewind.local_streaks_desc': 'Los que mantuvieron las rachas más largas:',
         'rewind.local_speed_title': '⚡ VELOCISTAS - {server}',
         'rewind.local_speed_desc': 'Los más rápidos en promedio (mínimo 10 poles):',
+        'rewind.local_puta_title': '🔥 MÁS PUTERO - {server}',
+        'rewind.local_puta_desc': 'Los que más soltaron la palabra mágica en el chat:',
         'rewind.global_title': '🌍 HALL OF FAME GLOBAL',
         'rewind.global_desc': 'Las leyendas que dominaron **TODOS** los servidores en {season}:',
         'rewind.global_points': '**👑 Máximos Anotadores**',
@@ -576,6 +657,16 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'rewind.tagline.poles': 'Siempre ahí.',
         'rewind.tagline.streaks': 'La disciplina es poder.',
         'rewind.tagline.speed': 'Reflejos de campeón.',
+        'rewind.tagline.puta': 'Poesía fina de taberna digital.',
+
+        # Valores del Hall of Fame
+        'rewind.points_value': '<@{uid}> - **{points:,}** pts',
+        'rewind.poles_value': '<@{uid}> - **{count}** poles',
+        'rewind.streak_value': '<@{uid}> - **{streak}** días consecutivos',
+        'rewind.speed_value': '<@{uid}> - **{delay:.1f}** min promedio',
+        'rewind.puta_value': '<@{uid}> - **{count}** putas',
+        'rewind.puta_total_label': '🧮 Total del guild',
+        'rewind.puta_total_value': '**{total}** putas acumuladas',
         
         # Mensajes de nueva temporada
         'rewind.new_season_first_title': '🚀 BIENVENIDOS A LA {season}',
@@ -588,8 +679,11 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         
         # ==================== MIDNIGHT SUMMARY ====================
         'summary.new_day': '🌅 Nuevo Día',
-        'summary.new_day_desc': 'Arranca la jornada: espera el ping y entra a polear.',
-        'summary.footer': 'Resumen automático • Sin pings',
+        'summary.new_day_desc': 'Nuevo día, mismo vicio: espera apertura y no te duermas.',
+        'summary.footer': 'Resumen automático • que no te pille dormido',
+        'summary.field.completed_count': '✅ Completados',
+        'summary.field.risk_count': '⏳ En riesgo',
+        'summary.field.elsewhere_count': '🌍 En otros servers',
         'summary.completed_yesterday': '✅ Completaron su pole ayer',
         'summary.streak_at_risk': '⏳ Racha en Peligro',
         'summary.streak_at_risk_desc': '⚠️ **{count}** con la racha en el filo:\n\n{users}\n\n🐷 Aún puedes hacer el **marranero** hasta la próxima apertura.',
@@ -615,6 +709,9 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'dedication.speed.1': 'Reflejos de Rayo',
         'dedication.speed.2': 'Velocidad Supersónica',
         'dedication.speed.3': 'Rápido como el Viento',
+        'dedication.puta.1': 'Boca de Fuego',
+        'dedication.puta.2': 'Lengua Afilada',
+        'dedication.puta.3': 'Poeta del Caos',
         
         # Dedicatorias Globales
         'dedication.points_global.1': 'El Titán de los Puntos',
@@ -667,6 +764,9 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'cmd.season.desc': 'View current season info and your progress',
         'cmd.polehelp.desc': 'Learn how the bot works',
         'cmd.mystats.desc': 'View your season history and badge collection',
+        'cmd.putometro.desc': 'Check the putometer: local user ranking and global guild ranking',
+        'cmd.putometro.scope_param': 'Ranking scope',
+        'cmd.putometro.limit_param': 'Number of entries',
         
         # Describe params
         'cmd.leaderboard.scope_describe': 'Leaderboard scope: local (this server) or global (all servers)',
@@ -688,6 +788,8 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'choice.personas': 'Players',
         'choice.servidores': 'Servers',
         'choice.rachas': 'Streaks',
+        'choice.putometro.scope.local': 'Local',
+        'choice.putometro.scope.global': 'Global',
         
         # ==================== SETTINGS ====================
         'settings.title': '⚙️ Pole Bot Settings',
@@ -813,9 +915,13 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.field.streak_multi': '{emoji} Streak (x{multiplier})',
         'pole.field.streak_days': '{days} days',
         'pole.field.total_earned': '✨ Total Earned',
+        'pole.field.streak_status': '🔥 Multiplier',
+        'pole.field.streak_hot_value': '{emoji} Hot streak: **x{multiplier}**',
+        'pole.field.streak_cold_value': '{emoji} Warming up: **x{multiplier}**',
         'pole.field.broken_streak': '💔 Previous Streak',
-        'pole.field.broken_streak_desc': 'You keep 20% of your previous streak',
+        'pole.field.broken_streak_desc': 'Previous streak got nuked to zero. Fresh start today.',
         'pole.field.broken_streak_title': '💔 Streak Broken',
+        'pole.notification.author': '{user} just kicked the door in',
         
         # Pole - Notification descriptions (with random variations)
         'pole.notification.description_critical': [
@@ -824,7 +930,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} ⚡ Brutal CRITICAL: {delay}. On fire.',
             '{mention} 💥 {delay} CRITICAL. Unstoppable.',
             '{mention} <a:fire:1440018375144374302> {delay}... You\'re INSANE. What a crit.',
-            '{mention} ⚡ CRITICAL ({delay}). Fucking beast mode.',
+            '{mention} ⚡ CRITICAL ({delay}). Beast mode activated.',
             '{mention} 💎 {delay}. You ATE that pole, king.',
             '{mention} 🚀 CRITICAL in {delay}. Built different.',
             '{mention} ⚡ {delay} CRITICAL. No one\'s touching you.',
@@ -855,15 +961,15 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
             '{mention} ⏰ Pole in late mode ({delay}).',
         ],
         'pole.notification.description_marranero': [
-            '{mention} 🐷 Sleepyhead pole... {delay} late. Better late than never.',
-            '{mention} 🐷 Sleepyhead: {delay}. Wake up earlier tomorrow.',
-            '{mention} 🐷 {delay} delay. Quite the oversleep.',
-            '{mention} 🐷 Sleepyhead in {delay}. At least you showed up.',
-            '{mention} 🐷 {delay} late... You a whole mess.',
-            '{mention} 🐷 SLEEPYHEAD in {delay}. Shameless.',
-            '{mention} 🐷 {delay} delay. Overslept hard.',
-            '{mention} 🐷 Sleepyhead ({delay}). The audacity lmao.',
-            '{mention} 🐷 {delay}... Bro was in a coma.',
+            '{mention} 🐷 Sleepyhead in {delay}. Points secured, glory denied.',
+            '{mention} 🐷 You rolled in after {delay}. Survived today, compete tomorrow.',
+            '{mention} 🐷 {delay} late. Chat will remember this oversleep.',
+            '{mention} 🐷 Sleepyhead run: {delay}. Streak saved by a thread.',
+            '{mention} 🐷 {delay} delay. Dramatic entrance, zero epic.',
+            '{mention} 🐷 SLEEPYHEAD in {delay}. Pride takes a small hit.',
+            '{mention} 🐷 {delay} late. Revenge arc starts tomorrow.',
+            '{mention} 🐷 Sleepyhead ({delay}). Alarm clock wins this round.',
+            '{mention} 🐷 {delay}. Pole collected, ego dented.',
         ],
         
         # Pole - Footers with personality
@@ -871,7 +977,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'pole.footer.fast': 'pretty nice 💪',
         'pole.footer.normal': 'solid grab 👌',
         'pole.footer.late': 'better late than never ⏰',
-        'pole.footer.marranero': 'sleepyhead mode 🥱',
+        'pole.footer.marranero': 'saved by a whisker 🐷',
         
         # ==================== PROFILE ====================
         'profile.title': '📊 {user}\'s Stats',
@@ -880,6 +986,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'profile.desc_global': '*Combined data from all servers*',
         'profile.desc_local': '*Data from this server only*',
         'profile.no_data': '❌ {user} hasn\'t hit any poles yet. Time to get on it!',
+        'profile.no_data_global': '❌ {mention} has zero global poles. Full nap mode so far.',
         'profile.no_data_local': '❌ {mention} hasn\'t bagged any poles on this server.',
         
         # Profile fields  
@@ -1051,11 +1158,17 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'ui.represent.none': '*No server set*',
         
         # ==================== NOTIFICACIONES ====================
-        'notification.pole_open': '🔔 POLE IS OPEN',
-        'notification.pole_open_recovery': '🔔 POLE IS OPEN (Recovery)',
-        'notification.pole_open_recovery_desc': '⚠️ Bot was offline during scheduled opening.\nType **pole** now to earn points 🏁',
-        'notification.pole_open_desc': 'Time to drop that **pole** and rack up points 🏁\nFirst one wins, rest just watch.',
-        'notification.pole_open_footer': 'Let the race begin ✨',
+        'notification.pole_open': '🚨 Pole is live, wake up',
+        'notification.pole_open_recovery': '🚨 Pole live (late as usual)',
+        'notification.pole_open_recovery_desc': '⚠️ We showed up late, not gonna lie.\nYou can still type **pole** and steal points.',
+        'notification.pole_open_desc': 'It\'s open.\nType **pole** before someone snatches it.',
+        'notification.pole_open_footer': 'Run now, complain later.',
+        'notification.field.command': '⌨️ Command',
+        'notification.field.command_value': 'Drop **{command}** here, no poetry',
+        'notification.field.mode': '🎯 State',
+        'notification.field.mode_normal': 'Normal (no drama)',
+        'notification.field.mode_recovery': 'Recovery (late start)',
+        'notification.field.opened_at': '🕒 Opening reference',
         'notification.streak_lost': '💔 Streak Lost',
         'notification.streak_lost_desc': '{names}\nStreak reset for not completing yesterday.',
         'notification.daily_summary': '🌃 Daily Summary',
@@ -1088,6 +1201,75 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'leaderboard.entry.members': '👥 {count} members',
         'leaderboard.entry.current_streak': 'Current: **{current}** days',
         'leaderboard.entry.best_streak': 'Best: **{best}** days',
+
+        # ==================== PUTOMETRO ====================
+        'putometro.trigger.hit': '📈 {mention}, you dropped **{message_count}** in this message. Your total: **{user_count}** • Guild: **{guild_total}**.',
+        'putometro.trigger.title': [
+            '🧨 PUTOMETER UNLOCKED',
+            '📟 ALERT: CHAT IS OVERHEATING',
+            '🎛️ CHAOS MODE: ON',
+            '🚨 LEXICAL MELTDOWN DETECTED',
+            '🧂 THE PUTOMETER WANTS MORE',
+        ],
+        'putometro.trigger.desc': [
+            '{mention} just dropped **{message_count}** in one line. Unreal scenes.',
+            '{mention} dumped **{message_count}** at once. Zero elegance, max entertainment.',
+            '{mention} fired **{message_count}** in this message. Chat is now smoking.',
+            '{mention} spawned **{message_count}** instantly. Drama level unlocked.',
+        ],
+        'putometro.trigger.field.message': '⚡ Message combo',
+        'putometro.trigger.field.user_total': '🧍 Personal score',
+        'putometro.trigger.field.guild_total': '🏰 Guild total',
+        'putometro.trigger.field.mode': '🎭 Diagnosis',
+        'putometro.trigger.value.message_count': '```+{message_count}```',
+        'putometro.trigger.value.user_total': '```{user_count}```',
+        'putometro.trigger.value.guild_total': '```{guild_total}```',
+        'putometro.trigger.mode.warmup': 'Warm-up mode. Plenty of room to cause more chaos.',
+        'putometro.trigger.mode.chaos': 'Chaos mode. You came here to make noise.',
+        'putometro.trigger.mode.nuclear': 'Nuclear mode. Channel evacuation is advised.',
+        'putometro.trigger.mode.veteran': 'Veteran of disaster. This is now a craft.',
+        'putometro.trigger.mode.boss': 'BOSS MODE active. Chat is watching in fear and awe.',
+        'putometro.trigger.field.milestone': '🏆 Milestone unlocked',
+        'putometro.trigger.milestone.value': 'You just crossed **{milestone}**. Current score: **{user_count}**.',
+        'putometro.trigger.field.ranking_flash': '📊 Ranking flash',
+        'putometro.trigger.ranking.you': 'Your place: **#{rank}/{total_users}** • Total: **{user_total}**\n\n**Hot top:**\n{top}',
+        'putometro.trigger.ranking.top_entry': '#{position} {mention} — **{count}**',
+        'putometro.trigger.footer': [
+            'Official chaos metrics • Keep cooking',
+            'The counter does not judge, it only exposes',
+            'Drama audit completed successfully',
+            'Absurd metric, legendary output',
+        ],
+        'putometro.trigger.footer.milestone': 'Level up: {milestone}. Keep the nonsense flowing.',
+        'putometro.trigger.footer.boss': 'Boss mode hit cooldown. Enjoy your spotlight minute.',
+        'putometro.trigger.footer.boss_milestone': 'Boss mode + milestone in one shot. Unhinged behavior.',
+        'putometro.rank.local.title': '📊 Local Putometer of {server}',
+        'putometro.rank.local.desc': 'Server top list in fun mode. The counter rules here.',
+        'putometro.rank.local.field.top': '🏆 Top {limit}',
+        'putometro.rank.local.field.you': '🙋 Your score',
+        'putometro.rank.local.field.total': '🧮 Guild total',
+        'putometro.rank.local.entry': '#{position} {mention} — {count}',
+        'putometro.rank.local.you_value': '{mention}: {user_count} • Rank #{position}',
+        'putometro.rank.local.you_none': '{mention}: you have not triggered the putometer yet.',
+        'putometro.rank.local.total_value': '{guild_total} logged in {server}',
+        'putometro.rank.global.title': '🌍 Global Guild Ranking',
+        'putometro.rank.global.desc': 'Worldwide guild board. This is where the most spicy guild is decided.',
+        'putometro.rank.global.field.champion': '👑 Most spicy guild',
+        'putometro.rank.global.field.top': '🏆 Top {limit} guilds',
+        'putometro.rank.global.field.current': '📍 Your guild',
+        'putometro.rank.global.entry': '#{position} {guild_name} — {count}',
+        'putometro.rank.global.champion_value': '{guild_name} leads with {count}',
+        'putometro.rank.global.current_value': '{guild_name}: #{position} • {count}',
+        'putometro.rank.global.current_none': '{guild_name}: not on the global board yet.',
+        'putometro.empty.local': 'No records yet in this server. The putometer is still at zero.',
+        'putometro.empty.global': 'No guilds on the global board yet. Nobody has fired up the putometer.',
+        'putometro.error.server_only': 'This command works only in servers.',
+        'putometro.error.invalid_scope': 'Invalid scope. Use local or global.',
+        'putometro.error.load_failed': 'I could not load the putometer right now. Try again in a moment.',
+        'putometro.footer.local': 'Tip: switch to global scope to compare guilds',
+        'putometro.footer.global': 'Guilds competing: {guilds_count}',
+        'putometro.footer.updated': 'Updated: {time}',
+        'putometro.guild.unknown': 'Guild {target_id}',
         
         # ==================== PROFILE ====================
         'profile.title.global': '🌍 Global Profile of {user}',
@@ -1110,9 +1292,6 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         # Profile - Streak
         'profile.streak.current_title': '{emoji} Current Streak',
         'profile.streak.current_value': '**{days}** consecutive days\nMultiplier: **x{multiplier:.1f}**',
-        
-        # Profile - POLE REWIND
-        'rewind.streak_value': '<@{uid}> - **{streak}** consecutive days',
         
         # ==================== HISTORY ====================
         'history.title': '📜 Pole History - {user}',
@@ -1146,7 +1325,7 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'help.streaks': '<a:fire:1440018375144374302> Streak System',
         'help.streaks_desc': 'Hit poles on consecutive days to increase your multiplier\n• 7 days: x1.1\n• 30 days: x1.4\n• 90 days: x1.8\n• 300 days: x2.5 (max)',
         'help.commands': '⚙️ Commands',
-        'help.commands_desc': '`/profile` - View your profile and stats\n`/leaderboard` - View rankings (local/global, players/servers)\n`/streak` - Detailed streak info\n`/season` - View current season and your progress\n`/history` - View badges and past seasons\n`/settings` - Configure the bot (admins)\n`/polehelp` - View this help',
+        'help.commands_desc': '`/profile` - View your profile and stats\n`/leaderboard` - View rankings (local/global, players/servers)\n`/putometro` - View putometer ranking (local/global)\n`/streak` - Detailed streak info\n`/season` - View current season and your progress\n`/history` - View badges and past seasons\n`/settings` - Configure the bot (admins)\n`/polehelp` - View this help',
         'help.footer': 'Good luck, may the fastest win! 🔥',
         
         # ==================== SEASON ====================
@@ -1198,6 +1377,8 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'rewind.local_streaks_desc': 'Who kept the longest streaks:',
         'rewind.local_speed_title': '⚡ SPEED DEMONS - {server}',
         'rewind.local_speed_desc': 'Fastest average times (min 10 poles):',
+        'rewind.local_puta_title': '🔥 CHIEF SWEARER - {server}',
+        'rewind.local_puta_desc': 'Who spammed the magic word the most in chat:',
         'rewind.global_title': '🌍 GLOBAL HALL OF FAME',
         'rewind.global_desc': 'The legends who dominated **ALL** servers in {season}:',
         'rewind.global_points': '**👑 Top Scorers**',
@@ -1215,12 +1396,16 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'rewind.tagline.poles': 'Always there.',
         'rewind.tagline.streaks': 'Discipline is power.',
         'rewind.tagline.speed': 'Champion reflexes.',
+        'rewind.tagline.puta': 'Fine tavern poetry in digital form.',
         
         # Hall of Fame values
         'rewind.points_value': '<@{uid}> - **{points:,}** pts',
         'rewind.poles_value': '<@{uid}> - **{count}** poles',
         'rewind.streak_value': '<@{uid}> - **{streak}** days straight',
         'rewind.speed_value': '<@{uid}> - **{delay:.1f}** min avg',
+        'rewind.puta_value': '<@{uid}> - **{count}** putas',
+        'rewind.puta_total_label': '🧮 Guild total',
+        'rewind.puta_total_value': '**{total}** putas logged',
         
         # New season messages
         'rewind.new_season_first_title': '🚀 WELCOME TO {season}',
@@ -1233,8 +1418,11 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         
         # ==================== MIDNIGHT SUMMARY ====================
         'summary.new_day': '🌅 New Day',
-        'summary.new_day_desc': 'New day starts: wait for the ping and go pole.',
-        'summary.footer': 'Automatic summary • No pings',
+        'summary.new_day_desc': 'New day, same grind: wait for opening and do not oversleep.',
+        'summary.footer': 'Automatic summary • do not get caught sleeping',
+        'summary.field.completed_count': '✅ Completed',
+        'summary.field.risk_count': '⏳ At risk',
+        'summary.field.elsewhere_count': '🌍 Other servers',
         'summary.completed_yesterday': '✅ Completed Yesterday\'s Pole',
         'summary.streak_at_risk': '⏳ Streak at Risk',
         'summary.streak_at_risk_desc': '⚠️ **{count}** on the edge:\n\n{users}\n\n🐷 You can still get the **late pole** until next opening.',
@@ -1260,6 +1448,9 @@ TRANSLATIONS: Dict[str, Dict[str, Union[str, List[str]]]] = {
         'dedication.speed.1': 'Lightning Reflexes',
         'dedication.speed.2': 'Supersonic Speed',
         'dedication.speed.3': 'Fast as the Wind',
+        'dedication.puta.1': 'Mouth on Fire',
+        'dedication.puta.2': 'Sharp Tongue',
+        'dedication.puta.3': 'Chaos Poet',
         
         # Global Dedications
         'dedication.points_global.1': 'The Point Titan',
