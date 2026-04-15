@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 import re
 import asyncio
 import logging
+import unicodedata
 from typing import Optional, Dict, Any
 
 try:
@@ -39,7 +40,7 @@ log = logging.getLogger('PoleCog')
 # Emoji de fuego personalizado (usar en todo el bot)
 FIRE = "<a:fire:1440018375144374302>"
 GRAY_FIRE = "<:gray_fire:1445324596751503485>"
-PUTA_REGEX = re.compile(r'(?<!\w)puta+(?!\w)', re.IGNORECASE)
+PUTA_REGEX = re.compile(r'puta+', re.IGNORECASE)
 PUTOMETRO_MEME_URL = "https://i.imgur.com/v2YghCs.jpeg"
 
 
@@ -480,7 +481,7 @@ class PoleCog(commands.Cog):
         self.bot = bot
         self.db = bot._db  # Instancia compartida de Database (creada en main.py)
         self._pole_locks: Dict[str, asyncio.Lock] = {}  # Anti-race-condition: lock por usuario+guild+fecha
-        self._putometro_milestones = (10, 25, 50, 100, 250, 500, 1000, 2500, 5000)
+        self._putometro_milestones = (10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000)
         self._putometro_boss_threshold = 5
         self._putometro_user_cooldown_seconds = 120
         self._putometro_guild_cooldown_seconds = 30
@@ -735,9 +736,32 @@ class PoleCog(commands.Cog):
         return content.lower() == 'pole'
 
     @staticmethod
+    def _sanitize_for_putometro(content: str) -> str:
+        """Sanitizar contenido para detección robusta anti-evasión del putómetro."""
+        text = (content or "").lower()
+        replacements = str.maketrans({
+            'а': 'a',
+            'о': 'o',
+            'е': 'e',
+            'р': 'p',
+            'с': 'c',
+            'у': 'y',
+            'т': 't',
+            '@': 'a',
+            '0': 'o',
+            '4': 'a',
+            '7': 't',
+        })
+        text = text.translate(replacements)
+        text = unicodedata.normalize('NFKD', text)
+        text = ''.join(ch for ch in text if not unicodedata.combining(ch))
+        return re.sub(r'[^a-z]', '', text)
+
+    @staticmethod
     def _count_puta_occurrences(content: str) -> int:
         """Contar ocurrencias de 'puta' (incluye variantes tipo putaaa)."""
-        return len(PUTA_REGEX.findall(content or ""))
+        sanitized = PoleCog._sanitize_for_putometro(content)
+        return len(PUTA_REGEX.findall(sanitized))
 
     @staticmethod
     def _find_crossed_milestone(prev_total: int, new_total: int, milestones: tuple[int, ...]) -> Optional[int]:
