@@ -82,5 +82,6 @@ python main.py
 ## ✅ Validación rápida
 
 ```bash
-python -m compileall cogs utils main.py scripts
+python -m py_compile main.py
+python -m compileall cogs utils scripts
 ```
