@@ -1,74 +1,62 @@
-# Reglas Oficiales - Pole Bot
+# 🏁 Reglas Oficiales de Pole Bot
 
-## Objetivo
+## 🎯 Objetivo
 
-Ser de los primeros en escribir `pole` cuando el bot abra el dia.
+Ser de los primeros en escribir `pole` cuando el bot abre el día.
 
-## Como funciona cada dia
+## ⏱️ Flujo diario
 
-1. El bot genera una hora aleatoria de apertura por servidor.
-2. Cuando llega la hora, envia la notificacion en el canal configurado.
-3. Los usuarios escriben `pole` y el bot clasifica la velocidad.
+1. Se genera una hora de apertura aleatoria por servidor.
+2. El bot notifica en el canal configurado.
+3. Los mensajes `pole` se clasifican por velocidad.
 
-## Categorias y puntos base
+## 💎 Categorías y puntos base
 
-- Critica (0-10 min): 20 pts
-- Veloz (10 min-3h): 15 pts
-- Normal (3h-00:00): 10 pts
-- Marranero (dia siguiente): 5 pts
+- **Critical** (0–10 min): 20 pts
+- **Fast** (10 min–3 h): 15 pts
+- **Normal** (3 h–fin del día local): 10 pts
+- **Marranero** (día siguiente): 5 pts
 
-Los puntos finales aplican multiplicador de racha.
+> El resultado final aplica multiplicador de racha.
 
-## Cuotas
+## 📊 Cuotas por categoría
 
-Las cuotas premium se calculan sobre jugadores activos del servidor:
+Calculadas sobre jugadores activos del servidor:
 
-- Critica: 10%
-- Veloz: 30%
+- Critical: 10%
+- Fast: 30%
 
-Si la cuota de una categoria se llena, baja a la siguiente sin bloquear el pole.
+Si una categoría se llena, la participación baja a la siguiente sin bloquear la pole.
 
-## Regla global clave
+## 🌍 Regla global
 
-Solo una pole por dia a nivel global (entre todos los servidores).
+Solo puedes hacer **una pole por día global** (aunque juegues en varios servidores).
 
-Si ya hiciste pole en otro servidor, no puedes repetir ese mismo dia.
+## 🔥 Rachas
 
-## Rachas
+- Son globales (no por servidor).
+- Si cumples el día, suben +1.
+- Si no cumples, se pueden reiniciar.
+- El marranero permite recuperar el día anterior dentro de su ventana.
 
-- La racha es global (no por servidor).
-- Si cumples el dia, sube +1.
-- Si no cumples, puede resetearse a 0.
-- El marranero sirve para recuperar el dia anterior dentro de su ventana.
+## 🐷 Marranero (aclaración)
 
-## Sobre el marranero
+- No cuenta como segunda pole del día.
+- Registra `pole_date` del día perdido.
+- No permite duplicar un día ya reclamado.
 
-- No es una segunda pole del mismo dia.
-- Cuenta para el dia anterior (`pole_date` del dia perdido).
-- Si ya hiciste pole ese dia (en cualquier servidor), no puedes usar marranero para duplicar.
+## 🛟 Downtime y compensaciones
 
-## Casos de downtime
-
-El bot tiene failsafes de notificacion y verificaciones de estado para reducir perdidas por caidas.
-
-En incidencias reales, los admins con debug pueden usar comandos de compensacion:
+Ante incidencias reales, admins con debug pueden usar:
 
 - `/debug compensate_downtime`
 - `/debug restore_streak`
 - `/debug restore_guild`
 
-## Configuracion minima por servidor
-
-Con `/settings`:
+## ⚙️ Configuración mínima (`/settings`)
 
 - Canal de pole
 - Rango horario
 - Notificaciones
-- Ping de rol o everyone (opcional)
+- Ping opcional (rol o everyone)
 - Idioma
-
-## FAQ corta
-
-- "Es por mayusculas?": No, `pole` se valida ignorando mayusculas/minusculas.
-- "Puedo polear en dos servers?": No, una pole diaria global.
-- "Perdi racha por bug": Reporta fecha/guild y usa comando debug de restauracion si procede.
