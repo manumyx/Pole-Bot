@@ -1,44 +1,38 @@
-# Badges y Rangos
+# 🏆 Badges y Rangos
 
-Este documento describe el sistema que SI esta implementado en Pole Bot.
+Este documento describe únicamente el sistema competitivo activo del bot.
 
-## Sistema actual
+## ✅ Sistema implementado
 
-El progreso competitivo se apoya en:
+- Puntos por temporada.
+- Rangos visuales por puntos.
+- Badges permanentes por posición final.
 
-- Puntos de temporada
-- Rangos visuales por puntos
-- Badges permanentes por posicion final
-
-## Rangos por puntos de temporada
+## 🎖️ Rangos de temporada
 
 - Bronce
 - Plata
 - Oro
 - Diamante
 - Amatista
-- Rubi
+- Rubí
 
-Los umbrales exactos se gestionan desde `utils/scoring.py`.
+Los umbrales se mantienen en `utils/scoring.py`.
 
-## Badges permanentes
+## 🥇 Badges permanentes (fin de temporada)
 
-Al cerrar temporada se guardan resultados y se asignan badges por posicion final.
+Se asignan al **Top 3**:
 
-Top 3 de temporada:
+- 1.º
+- 2.º
+- 3.º
 
-- 1o
-- 2o
-- 3o
+Se conservan históricamente entre temporadas.
 
-Estos badges se conservan historicamente.
+## 🎬 POLE REWIND
 
-## POLE REWIND
+Al cambio de temporada se puede publicar un resumen de hall of fame local/global.
 
-En cambio de temporada, el bot puede publicar resumen de hall of fame local/global.
+## ℹ️ Alcance actual
 
-## Importante
-
-Este repo NO mantiene un sistema de "achievements individuales" tipo desbloqueables por hitos (ejemplo: "10 criticas", "100 poles", etc.) como parte activa del producto.
-
-Si se implementa en el futuro, este documento se ampliara con reglas, triggers y persistencia.
+No existe un sistema activo de logros individuales por hitos (`10 critical`, `100 poles`, etc.).
