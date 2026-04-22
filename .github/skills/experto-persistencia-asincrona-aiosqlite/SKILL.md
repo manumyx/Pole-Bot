@@ -6,9 +6,11 @@ description: "Usa esta skill cuando tengas que revisar o refactorizar persistenc
 # Skill: Experto en Persistencia Asincrona (aiosqlite)
 
 ## Contexto
+
 El bot usa `aiosqlite`. Cualquier operacion de base de datos que no sea `await` bloqueara el bot entero.
 
 ## Reglas de Oro
+
 - **Consultas:** Usa siempre `async with self.db.get_connection() as conn:`.
 - **Transacciones:** Si vas a escribir (INSERT/UPDATE), asegurate de que la funcion sea `async` y tenga `await conn.commit()`.
 - **Prevencion de Errores:** Nunca dejes un cursor abierto. Usa siempre el context manager.

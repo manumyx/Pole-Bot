@@ -64,6 +64,7 @@ class UserChange:
     new_current_streak: int
     new_best_streak: int
     new_last_pole_date: date
+    protect_applied: bool
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,6 +122,23 @@ def parse_args() -> argparse.Namespace:
         "--show-all",
         action="store_true",
         help="Mostrar tambien usuarios sin cambio final.",
+    )
+    parser.add_argument(
+        "--protect-tomorrow",
+        action="store_true",
+        help=(
+            "Perdona el dia actual para evitar perdida de racha manana: "
+            "si tuvo pole ayer y no hoy, fija last_pole_date en hoy "
+            "sin insertar poles ni tocar puntos."
+        ),
+    )
+    parser.add_argument(
+        "--protect-bump",
+        action="store_true",
+        help=(
+            "Con --protect-tomorrow, suma +1 a current_streak de los usuarios "
+            "protegidos (si no se activa, solo se conserva la continuidad)."
+        ),
     )
     return parser.parse_args()
 
@@ -311,6 +329,8 @@ def compute_changes(
     mode: str,
     allow_decrease: bool,
     rebuild_best: bool,
+    protect_date: Optional[date],
+    protect_bump: bool,
 ) -> List[UserChange]:
     changes: List[UserChange] = []
     season_end = season_window.end_date
@@ -327,6 +347,7 @@ def compute_changes(
 
         had_preseason_activity = any(value < season_window.start_date for value in all_dates)
         season_last_date = in_season_dates[-1]
+        real_last_date = all_dates[-1]
 
         if mode == "forgiving":
             season_anchor_date = season_window.start_date if had_preseason_activity else in_season_dates[0]
@@ -353,11 +374,9 @@ def compute_changes(
                 exists=False,
             )
 
-        old_last = state.last_pole_date
-        if old_last and old_last > season_last_date:
-            new_last = old_last
-        else:
-            new_last = season_last_date
+        # Seguridad: last_pole_date debe reflejar actividad REAL (tabla poles),
+        # no preservar un valor previo que pudiera estar inconsistente.
+        new_last = real_last_date
 
         if allow_decrease:
             new_current = expected_current_streak
@@ -369,6 +388,21 @@ def compute_changes(
         else:
             # Modo conservador: no reescribe historial completo de best_streak.
             new_best = max(state.best_streak, new_current)
+
+        protect_applied = False
+        if protect_date is not None:
+            prev_day = protect_date - timedelta(days=1)
+            has_pole_protect_date = protect_date in all_dates
+            had_pole_prev_day = prev_day in all_dates
+            has_streak_to_protect = max(state.current_streak, new_current, expected_current_streak) > 0
+
+            if (not has_pole_protect_date) and had_pole_prev_day and has_streak_to_protect:
+                new_last = protect_date
+                if protect_bump:
+                    base_streak = max(state.current_streak, new_current, expected_current_streak)
+                    new_current = base_streak + 1
+                new_best = max(new_best, new_current)
+                protect_applied = True
 
         username = state.username or usernames.get(user_id, f"user_{user_id}")
         changes.append(
@@ -389,6 +423,7 @@ def compute_changes(
                 new_current_streak=new_current,
                 new_best_streak=new_best,
                 new_last_pole_date=new_last,
+                protect_applied=protect_applied,
             )
         )
 
@@ -475,6 +510,8 @@ def print_report(
     apply_mode: bool,
     allow_decrease: bool,
     rebuild_best: bool,
+    protect_date: Optional[date],
+    protect_bump: bool,
     all_items: List[UserChange],
     changed_items: List[UserChange],
     max_preview: int,
@@ -488,8 +525,12 @@ def print_report(
     print(f"Execution: {'APPLY' if apply_mode else 'DRY-RUN'}")
     print(f"Allow decrease: {allow_decrease}")
     print(f"Rebuild best: {rebuild_best}")
+    print(f"Protect tomorrow date: {protect_date if protect_date else 'off'}")
+    print(f"Protect bump (+1): {protect_bump}")
     print(f"Users with season activity: {len(all_items)}")
     print(f"Users with effective changes: {len(changed_items)}")
+    protected_count = sum(1 for item in all_items if item.protect_applied)
+    print(f"Users protected for tomorrow: {protected_count}")
 
     if not all_items:
         print("No hay usuarios con actividad en la temporada seleccionada.")
@@ -526,7 +567,8 @@ def print_report(
             f"last {format_date(item.old_last_pole_date)}->{format_date(item.new_last_pole_date)} "
             f"anchor={item.season_anchor_date} "
             f"season_days={item.season_days_with_pole} "
-            f"preseason={preseason_text}"
+            f"preseason={preseason_text} "
+            f"protect={'yes' if item.protect_applied else 'no'}"
         )
 
     remaining = len(preview_items) - max_preview
@@ -537,6 +579,7 @@ def print_report(
 async def run() -> int:
     args = parse_args()
     db_path = Path(args.db).resolve()
+    protect_date = datetime.now(LOCAL_TZ).date() if args.protect_tomorrow else None
 
     if not db_path.exists():
         print(f"ERROR: No existe la DB en {db_path}")
@@ -564,6 +607,8 @@ async def run() -> int:
             mode=args.mode,
             allow_decrease=args.allow_decrease,
             rebuild_best=args.rebuild_best,
+            protect_date=protect_date,
+            protect_bump=args.protect_bump,
         )
         changed_items = [item for item in all_items if is_changed(item)]
 
@@ -573,6 +618,8 @@ async def run() -> int:
             apply_mode=args.apply,
             allow_decrease=args.allow_decrease,
             rebuild_best=args.rebuild_best,
+            protect_date=protect_date,
+            protect_bump=args.protect_bump,
             all_items=all_items,
             changed_items=changed_items,
             max_preview=args.max_preview,

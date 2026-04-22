@@ -158,4 +158,10 @@ python scripts/restore_streaks.py --db data/pole_bot.db --mode strict
 
 # Recalcular tambien best_streak historico desde la temporada
 python scripts/restore_streaks.py --db data/pole_bot.db --rebuild-best
+
+# Proteger rachas para manana (perdona hoy sin tocar puntos)
+python scripts/restore_streaks.py --db data/pole_bot.db --protect-tomorrow
+
+# Igual que arriba, pero sumando +1 de racha al dia perdonado
+python scripts/restore_streaks.py --db data/pole_bot.db --protect-tomorrow --protect-bump
 ```

@@ -2,84 +2,20 @@
 # TODO - POLE BOT
 # ====================================
 
-## ✅ COMPLETADOS RECIENTEMENTE (histórico resumido)
-
-### 25 febrero 2026
-- [x] RONDA 3: correcciones cross-midnight + generator drift
-  - Fix de fecha efectiva de pole cuando la notificación cruza medianoche
-  - Protección de reseteo de rachas en contexto cross-midnight
-  - Failsafe para forzar generador diario si no corrió a tiempo
-  - Comandos debug de restauración reforzados
-
-### 20 febrero 2026
-- [x] Auditoría profunda: 5 bugs críticos interconectados
-  - Generador diario movido correctamente a medianoche
-  - Validación de freshness de notification_sent_at
-  - Corrección de clasificación post-medianoche (marranero)
-  - Protección contra reseteo de racha para usuarios que ya polearon hoy
-  - Corrección de degradación de cuotas sin consumir slots indebidamente
-
-### 16 febrero 2026
-- [x] Delay justo por hora real de notificación (schema v7)
-- [x] Anti race-condition: lock por usuario+guild+fecha para evitar poles duplicados
-
-### 15 febrero 2026
-- [x] Resumen de medianoche sin duplicados por usuario
-
-### 3 febrero 2026
-- [x] Variaciones aleatorias de mensajes (ES/EN) + fix de tiempo dinámico en notificaciones
-
-### 1 febrero 2026
-- [x] Sistema i18n base implementado (ES/EN)
-  - Idioma por servidor
-  - Selector en settings
-  - Migración de base de datos
-
-### 29 enero 2026
-- [x] Migración a rachas globales (global_users)
-- [x] Fix de watcher que reseteaba rachas inesperadamente tras lag
-- [x] Validación global de poles/marranero corregida
-
-### 15 enero 2026
-- [x] Bug marranero resuelto (ventana correcta basada en apertura real)
-
-### 2 enero 2026
-- [x] Crisis migración de Año Nuevo resuelta
-  - Corrección de detección de temporada por año
-  - Reparación de temporada corrupta y recuperación de stats
-  - Nuevo comando de recuperación de estado de temporada
-
-### Infraestructura y robustez (completado)
-- [x] Versionado de schema y migraciones centralizadas
-- [x] Foreign keys activadas
-- [x] Health checks y utilidades de diagnóstico
-- [x] Limpieza automática de servidores al ser expulsado el bot
-- [x] Mejoras de status y coherencia operativa
-
 ---
 
 ## 🚨 CRÍTICOS ABIERTOS (hacer YA)
 
-- [ ] Bugs sin identificar
+- [ ] N/A
 
 ---
 
 ## 🔧 PENDIENTES ACTIVOS (próximo sprint)
 
-- [ ] Checklist operativo para 31 diciembre 2026 (migración 2026 -> 2027)
-  - Bot online desde 23:00
-  - Sin reinicios entre 23:00 y 00:05
-  - Monitor de logs de migración + verificación de POLE REWIND
-  - Backup manual previo y plan B con comando debug
-
 - [ ] Mejorar onboarding al añadir bot a servidor
   - Mensaje más claro y con más carisma
   - Paso a paso corto: settings, canal, rango, ping, reglas
   - Revisar copy final en cogs/events.py
-
-- [ ] Cerrar cobertura i18n al 100%
-  - Auditoría de strings hardcodeados pendientes
-  - Completar claves faltantes ES/EN donde aplique producto final
 
 - [ ] Ajuste visual menor de mensajes (emojis/consistencia)
   - Revisión de iconografía de puntos y bloques informativos
@@ -90,6 +26,7 @@
 
 - [ ] Métricas internas de fiabilidad (tiempos de notificación, retrasos, incidencias)
 - [ ] Dashboard de salud operativa para debug/admin
+- [ ] El sistema de logros
 
 ---
 
@@ -100,10 +37,3 @@
 - [x] Evitar duplicados: una tarea solo en una sección.
 - [x] Si una tarea se completa, moverla a Completados y marcar fecha.
 - [x] Si una tarea cambia de alcance, reescribirla (no acumular texto viejo debajo).
-
----
-
-## 📌 NOTA
-
-Este archivo queda como fuente única de verdad operativa.
-Si aparece una incidencia grande, se documenta en Completados con resumen claro y luego se mantiene el detalle técnico en código/logs/docs, no en bloques interminables dentro del TODO.
