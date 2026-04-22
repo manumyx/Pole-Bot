@@ -1136,18 +1136,19 @@ class Database:
     # ==================== MÉTODOS PUTÓMETRO ====================
 
     async def increment_puta_counter(self, guild_id: int, user_id: int, amount: int = 1) -> Tuple[int, int]:
-        """Incrementar contador de putómetro y devolver (total_usuario, total_guild)."""
-        increment = max(1, int(amount))
+        """Ajustar contador de putómetro y devolver (total_usuario, total_guild)."""
+        delta = int(amount)
         now_iso = datetime.now(LOCAL_TZ).isoformat()
 
         async with self.get_connection() as conn:
-            await conn.execute('''
-                INSERT INTO puta_counter (guild_id, user_id, total_count, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(guild_id, user_id) DO UPDATE SET
-                    total_count = total_count + excluded.total_count,
-                    updated_at = excluded.updated_at
-            ''', (guild_id, user_id, increment, now_iso))
+            if delta != 0:
+                await conn.execute('''
+                    INSERT INTO puta_counter (guild_id, user_id, total_count, updated_at)
+                    VALUES (?, ?, MAX(?, 0), ?)
+                    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                        total_count = MAX(puta_counter.total_count + ?, 0),
+                        updated_at = excluded.updated_at
+                ''', (guild_id, user_id, delta, now_iso, delta))
 
             cursor = await conn.execute('''
                 SELECT total_count

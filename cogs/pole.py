@@ -483,10 +483,15 @@ class PoleCog(commands.Cog):
         self._pole_locks: Dict[str, asyncio.Lock] = {}  # Anti-race-condition: lock por usuario+guild+fecha
         self._putometro_milestones = (10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000)
         self._putometro_boss_threshold = 5
+        self._putometro_window_seconds = 15
+        self._putometro_spam_threshold = 10
+        self._putometro_spam_warnings_limit = 3
         self._putometro_user_cooldown_seconds = 120
         self._putometro_guild_cooldown_seconds = 30
         self._putometro_user_cooldowns: Dict[tuple[int, int], datetime] = {}
         self._putometro_guild_cooldowns: Dict[int, datetime] = {}
+        self._recent_putas: dict[tuple[int, int], list[tuple[datetime, int]]] = {}
+        self._spam_warnings: dict[tuple[int, int], int] = {}
         self._last_generation_date: Optional[str] = None  # Marca de rollover diario en hora local
         self._scheduler_started = False
         self._scheduler_start_task: Optional[asyncio.Task[Any]] = None
@@ -712,10 +717,10 @@ class PoleCog(commands.Cog):
         else:
             # Ya abrió - vacilar con "mañana"
             responses = [
-                "Mañana",
-                "mañana bro",
-                "Mañana será",
-                "F en el chat. Mañana",
+                t('pole.after_opening.1', guild.id),
+                t('pole.after_opening.2', guild.id),
+                t('pole.after_opening.3', guild.id),
+                t('pole.after_opening.4', guild.id),
             ]
             embed = discord.Embed(
                 description=random.choice(responses),
@@ -740,6 +745,7 @@ class PoleCog(commands.Cog):
         """Sanitizar contenido para detección robusta anti-evasión del putómetro."""
         text = (content or "").lower()
         replacements = str.maketrans({
+            # Cirílicos visualmente idénticos a latinos
             'а': 'a',
             'о': 'o',
             'е': 'e',
@@ -747,10 +753,15 @@ class PoleCog(commands.Cog):
             'с': 'c',
             'у': 'y',
             'т': 't',
+            # Leetspeak y símbolos comunes
             '@': 'a',
             '0': 'o',
             '4': 'a',
             '7': 't',
+            '3': 'e',
+            '1': 'i',
+            '$': 's',
+            '!': 'i',
         })
         text = text.translate(replacements)
         text = unicodedata.normalize('NFKD', text)
@@ -778,6 +789,21 @@ class PoleCog(commands.Cog):
         expired_guilds = [gid for gid, v in self._putometro_guild_cooldowns.items() if v <= now]
         for gid in expired_guilds:
             del self._putometro_guild_cooldowns[gid]
+
+    def _prune_recent_putas(self, now: datetime) -> None:
+        """Limpiar registros de ventana temporal del putómetro fuera de los últimos N segundos."""
+        window_start = now - timedelta(seconds=self._putometro_window_seconds)
+        expired_keys: list[tuple[int, int]] = []
+
+        for key, events in self._recent_putas.items():
+            recent_events = [(ts, amount) for ts, amount in events if ts >= window_start]
+            if recent_events:
+                self._recent_putas[key] = recent_events
+            else:
+                expired_keys.append(key)
+
+        for key in expired_keys:
+            del self._recent_putas[key]
 
     def _can_emit_putometro_boss(self, guild_id: int, user_id: int, now: datetime) -> bool:
         """Controlar cooldown de boss mode por usuario+guild y por guild."""
@@ -817,9 +843,18 @@ class PoleCog(commands.Cog):
         return 'putometro.trigger.mode.warmup'
 
     async def _handle_putometro_message(self, message: discord.Message) -> None:
-        """Procesar easter egg de putómetro sin tocar el flujo de poles."""
+        """Procesar easter egg de putómetro sin tocar el flujo de poles.
+
+        Solo se activa en el pole_channel_id configurado del servidor.
+        """
         guild = message.guild
         if guild is None:
+            return
+
+        # --- Restricción de canal: solo procesar en pole_channel_id ---
+        server_config = await self.db.get_server_config(guild.id)
+        pole_channel_id = server_config.get('pole_channel_id') if server_config else None
+        if not pole_channel_id or message.channel.id != pole_channel_id:
             return
 
         occurrences = self._count_puta_occurrences(message.content)
@@ -831,17 +866,79 @@ class PoleCog(commands.Cog):
             set_cached_guild_language(guild.id, lang)
 
             now_local = datetime.now(LOCAL_TZ)
+            user_key = (guild.id, message.author.id)
+            self._prune_recent_putas(now_local)
+            recent_events = self._recent_putas.get(user_key, [])
+            recent_events.append((now_local, occurrences))
+            self._recent_putas[user_key] = recent_events
+            window_occurrences = sum(amount for _, amount in recent_events)
+
+            if occurrences >= self._putometro_spam_threshold:
+                warnings = self._spam_warnings.get(user_key, 0) + 1
+                self._spam_warnings[user_key] = warnings
+
+                if warnings < self._putometro_spam_warnings_limit:
+                    warning_embed = discord.Embed(
+                        title=t('putometro.spam.warning.title', guild.id),
+                        description=t(
+                            'putometro.spam.warning.desc',
+                            guild.id,
+                            current=warnings,
+                            limit=self._putometro_spam_warnings_limit,
+                        ),
+                        color=discord.Color.orange(),
+                        timestamp=now_local,
+                    )
+                    warning_embed.set_thumbnail(url=message.author.display_avatar.url)
+                    await message.reply(embed=warning_embed, mention_author=False)
+                    return
+
+                penalty_amount = 500
+                self._spam_warnings[user_key] = 0
+                user_total, guild_total = await self.db.increment_puta_counter(
+                    guild_id=guild.id,
+                    user_id=message.author.id,
+                    amount=-penalty_amount,
+                )
+
+                penalty_embed = discord.Embed(
+                    title=t('putometro.spam.penalty.title', guild.id),
+                    description=t(
+                        'putometro.spam.penalty.desc',
+                        guild.id,
+                        penalty=penalty_amount,
+                    ),
+                    color=discord.Color.from_rgb(139, 0, 0),
+                    timestamp=now_local,
+                )
+                penalty_embed.set_thumbnail(url=message.author.display_avatar.url)
+                penalty_embed.add_field(
+                    name=t('putometro.trigger.field.user_total', guild.id),
+                    value=t('putometro.trigger.value.user_total', guild.id, user_count=user_total),
+                    inline=True,
+                )
+                penalty_embed.add_field(
+                    name=t('putometro.trigger.field.guild_total', guild.id),
+                    value=t('putometro.trigger.value.guild_total', guild.id, guild_total=guild_total),
+                    inline=True,
+                )
+                await message.reply(embed=penalty_embed, mention_author=False)
+                return
+
+            # Cap estricto: +1 por mensaje en BD para evitar farmeo.
+            # Las ocurrencias reales se siguen usando para Boss Mode y diagnóstico.
+            db_amount = 1
             user_total, guild_total = await self.db.increment_puta_counter(
                 guild_id=guild.id,
                 user_id=message.author.id,
-                amount=occurrences,
+                amount=db_amount,
             )
-            prev_total = max(0, int(user_total) - int(occurrences))
+            prev_total = max(0, int(user_total) - db_amount)
             crossed_milestone = self._find_crossed_milestone(prev_total, int(user_total), self._putometro_milestones)
 
             boss_enabled = False
             flash_context: Optional[Dict[str, Any]] = None
-            if occurrences >= self._putometro_boss_threshold:
+            if window_occurrences >= self._putometro_boss_threshold:
                 boss_enabled = self._can_emit_putometro_boss(guild.id, message.author.id, now_local)
                 if boss_enabled:
                     flash_context = await self.db.get_puta_boss_flash_context(
@@ -851,18 +948,31 @@ class PoleCog(commands.Cog):
                     )
 
             mode_key = self._putometro_mode_key(occurrences, int(user_total))
+            embed_title = t('putometro.trigger.title', guild.id)
+            embed_description = t(
+                'putometro.trigger.desc',
+                guild.id,
+                mention=message.author.mention,
+                message_count=occurrences,
+            )
+            embed_color = self._putometro_color(occurrences)
             if boss_enabled:
                 mode_key = 'putometro.trigger.mode.boss'
-
-            embed = discord.Embed(
-                title=t('putometro.trigger.title', guild.id),
-                description=t(
-                    'putometro.trigger.desc',
+                embed_title = t('putometro.trigger.title.boss', guild.id)
+                embed_description = t(
+                    'putometro.trigger.desc.boss',
                     guild.id,
                     mention=message.author.mention,
                     message_count=occurrences,
-                ),
-                color=self._putometro_color(occurrences),
+                    window_count=window_occurrences,
+                    window_seconds=self._putometro_window_seconds,
+                )
+                embed_color = discord.Color.from_rgb(180, 0, 0)
+
+            embed = discord.Embed(
+                title=embed_title,
+                description=embed_description,
+                color=embed_color,
                 timestamp=now_local
             )
             embed.set_thumbnail(url=message.author.display_avatar.url)
