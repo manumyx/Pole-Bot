@@ -1,7 +1,7 @@
 ---
 name: "Senior Python & Discord.py Engineer"
 description: "Use when working on Pole-Bot Python code that needs strict async safety (discord.py + aiosqlite), timezone-safe datetime handling with LOCAL_TZ, and i18n-compliant user messaging with t()."
-tools: [read, search, edit, execute, todo, agent]
+tools: [vscode/getProjectSetupInfo, vscode/installExtension, vscode/memory, vscode/newWorkspace, vscode/resolveMemoryFileUri, vscode/runCommand, vscode/vscodeAPI, vscode/extensions, vscode/askQuestions, execute/runNotebookCell, execute/testFailure, execute/getTerminalOutput, execute/killTerminal, execute/sendToTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, read/getNotebookSummary, read/problems, read/readFile, read/viewImage, read/terminalSelection, read/terminalLastCommand, agent/runSubagent, agent, edit/createDirectory, edit/createFile, edit/createJupyterNotebook, edit/editFiles, edit/editNotebook, edit/rename, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/textSearch, search/usages, web/fetch, web/githubRepo, browser/openBrowserPage, ms-python.python/getPythonEnvironmentInfo, ms-python.python/getPythonExecutableCommand, ms-python.python/installPythonPackage, ms-python.python/configurePythonEnvironment, todo]
 argument-hint: "Que modulo quieres tocar y cual es el bug o mejora?"
 agents: [db-architect, discord-ux, logic-engine]
 user-invocable: true

@@ -97,6 +97,114 @@ class PoleBot(commands.Bot):
         
         # Se inicializa en setup_hook con await db.initialize()
         self._db: Optional["Database"] = None
+        self._commands_synced = False
+        self._commands_sync_count = 0
+        self._debug_guild_commands_synced = False
+
+    @staticmethod
+    def _is_debug_enabled() -> bool:
+        return os.getenv('DEBUG', '0') in ('1', 'true', 'True')
+
+    @staticmethod
+    def _is_debug_global_sync_enabled() -> bool:
+        return os.getenv('DEBUG_SYNC_GLOBAL', '0') in ('1', 'true', 'True')
+
+    def _parse_test_guild_ids(self) -> list[int]:
+        raw_ids = os.getenv('TEST_GUILD_ID', '').strip()
+        if not raw_ids:
+            return []
+
+        parsed_ids: list[int] = []
+        for chunk in raw_ids.split(','):
+            value = chunk.strip()
+            if not value:
+                continue
+            try:
+                parsed_ids.append(int(value))
+            except ValueError:
+                self.log.warning(f"TEST_GUILD_ID inválido ignorado: {value}")
+
+        return parsed_ids
+
+    async def _sync_debug_guild_commands(self) -> None:
+        """Sincronizar comandos en guild(s) para reflejo inmediato durante DEBUG."""
+        if self._debug_guild_commands_synced:
+            return
+
+        if not self._is_debug_enabled():
+            return
+
+        target_guild_ids = self._parse_test_guild_ids()
+        if not target_guild_ids:
+            target_guild_ids = [guild.id for guild in self.guilds]
+            if target_guild_ids:
+                self.log.warning(
+                    "DEBUG=1 sin TEST_GUILD_ID: usando guild sync en guilds conectadas (%s)",
+                    ", ".join(str(gid) for gid in target_guild_ids),
+                )
+
+        if not target_guild_ids:
+            self.log.warning(
+                "DEBUG=1 pero no hay TEST_GUILD_ID ni guilds conectadas para guild sync inmediato"
+            )
+            return
+
+        successful_syncs = 0
+        for guild_id in target_guild_ids:
+            try:
+                guild_obj = discord.Object(id=guild_id)
+                self.tree.copy_global_to(guild=guild_obj)
+                synced = await self.tree.sync(guild=guild_obj)
+                synced_names = ", ".join(sorted(command.name for command in synced))
+                self.log.info(
+                    f"{len(synced)} comandos slash sincronizados en guild {guild_id}: {synced_names}"
+                )
+                successful_syncs += 1
+            except Exception as e:
+                self.log.error(
+                    f"Error sincronizando comandos en guild {guild_id}: {e}",
+                    exc_info=True,
+                )
+
+        if successful_syncs > 0:
+            self._debug_guild_commands_synced = True
+
+    async def _sync_app_commands(self) -> None:
+        """Sincronizar comandos slash (global en producción, guild test opcional en DEBUG)."""
+        if self._commands_synced:
+            return
+
+        command_names = ", ".join(
+            sorted(command.qualified_name for command in self.tree.get_commands())
+        )
+        if command_names:
+            self.log.info(f"Comandos registrados en árbol antes de sync: {command_names}")
+
+        # En DEBUG, intentar también guild sync para disponibilidad inmediata.
+        await self._sync_debug_guild_commands()
+
+        # En DEBUG usamos por defecto solo sync de guild para evitar comandos duplicados en cliente.
+        if self._is_debug_enabled() and not self._is_debug_global_sync_enabled():
+            if self._debug_guild_commands_synced:
+                self._commands_synced = True
+                self._commands_sync_count = len(self.tree.get_commands())
+                self.log.info(
+                    "DEBUG: sync global omitido (DEBUG_SYNC_GLOBAL=0). Usando solo comandos de guild."
+                )
+            else:
+                self.log.warning(
+                    "DEBUG: sync global omitido y guild sync no disponible aún; se reintentará en on_ready."
+                )
+            return
+
+        # Producción: sync GLOBAL.
+        try:
+            synced = await self.tree.sync()
+            self._commands_synced = True
+            self._commands_sync_count = len(synced)
+            self.log.info(f"{len(synced)} comandos slash sincronizados globalmente")
+        except Exception as e:
+            self.log.error(f"Error sincronizando comandos slash globales: {e}", exc_info=True)
     
     async def setup_hook(self):
         """Se ejecuta antes de que el bot se conecte a Discord"""
@@ -125,6 +233,9 @@ class PoleBot(commands.Bot):
                 self.log.info(f"Cog cargado: {cog}")
             except Exception as e:
                 self.log.error(f"Error cargando {cog}: {e}", exc_info=True)
+
+        # Sincronizar comandos UNA vez durante arranque (global en producción).
+        await self._sync_app_commands()
         
         # Iniciar task de actualización de status
         self.update_status_task.start()
@@ -141,12 +252,13 @@ class PoleBot(commands.Bot):
         for guild in self.guilds:
             self.log.debug(f"  - {guild.name} (ID: {guild.id}, {guild.member_count} miembros)")
         
-        # Sincronizar comandos slash
-        try:
-            synced = await self.tree.sync()
-            self.log.info(f"{len(synced)} comandos slash sincronizados exitosamente")
-        except Exception as e:
-            self.log.error(f"Error sincronizando comandos slash: {e}", exc_info=True)
+        # Failsafe: reintentar sync si en setup_hook falló.
+        if not self._commands_synced:
+            self.log.warning("Comandos slash no sincronizados aún; reintentando en on_ready")
+            await self._sync_app_commands()
+
+        # DEBUG: si faltó guild sync en setup_hook (ej. sin TEST_GUILD_ID), hacerlo ahora.
+        await self._sync_debug_guild_commands()
         
         self.log.info("Pole Bot está listo y operativo!")
         self.log.info("=" * 60)

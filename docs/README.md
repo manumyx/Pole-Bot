@@ -1,32 +1,17 @@
-# Documentacion Pole Bot
+# 📚 Documentación de Pole Bot
 
-Indice de documentacion mantenida en este repositorio.
+Índice oficial de documentación activa del repositorio.
 
-## Documentos disponibles
+## 🧭 Lectura recomendada
 
-- [README principal](../README.md)
-- [Guia de deployment](../DEPLOYMENT.md)
-- [Reglas del juego](RULES.md)
-- [Badges y rangos](ACHIEVEMENTS.md)
-- [Internacionalizacion (i18n)](I18N.md)
+1. [README principal](../README.md)
+2. [Guía de deployment](../DEPLOYMENT.md)
+3. [Reglas del juego](RULES.md)
+4. [Badges y rangos](ACHIEVEMENTS.md)
+5. [Internacionalización (i18n)](I18N.md)
 
-## Estado de la documentacion
+## ✅ Criterio editorial
 
-Esta carpeta fue simplificada para reflejar solo archivos existentes.
-
-Enlaces retirados por estar fuera del repo actual:
-
-- `COMMANDS.md`
-- `SCORING.md`
-- `DESIGN.md`
-- `SEASONS.md`
-- `NOTIFICATIONS.md`
-- `BACKUP_RESTORE.md`
-
-Si vuelven a crearse esos documentos, se pueden reanadir al indice.
-
-## Convencion recomendada
-
-- Mantener docs sincronizados con el codigo actual.
-- No documentar scripts o comandos que no existan.
-- Si se agrega una feature grande, actualizar primero `README.md` y despues esta carpeta.
+- Mantener solo documentación útil y vigente.
+- Evitar duplicar contenido entre archivos.
+- Si cambia una feature, actualizar primero `README.md` y luego este índice.

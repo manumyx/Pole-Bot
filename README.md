@@ -1,49 +1,44 @@
-# Pole Bot
+# Pole Bot 🏁
 
 [![Discord](https://img.shields.io/badge/Discord-Bot-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com)
-[![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-Bot de Discord para competiciones diarias de pole: hora aleatoria, puntos por velocidad, rachas globales y temporadas anuales.
+Bot de Discord para competiciones diarias de `pole` con apertura aleatoria, clasificación por velocidad, rachas globales y temporadas anuales.
 
-## Que hace
+## ✨ Funcionalidades clave
 
-- Apertura diaria con hora aleatoria por servidor.
-- Clasificacion por velocidad: critica, veloz, normal y marranero.
-- Rachas globales (compartidas entre todos los servidores).
-- Multiplicador progresivo de racha hasta x2.5.
-- Temporadas anuales con migracion automatica.
-- POLE REWIND en cambio de temporada (resumen local/global).
-- Sistema de notificaciones con failsafe para downtime.
+- ⏰ Apertura diaria aleatoria por servidor.
+- 🏎️ Categorías por velocidad (`critical`, `fast`, `normal`, `marranero`).
+- 🌍 Regla global: una pole por usuario y día entre todos los servidores.
+- 🔥 Rachas globales con multiplicador progresivo (hasta x2.5).
+- 📅 Temporadas con migración automática al cambiar de año.
+- 🎬 POLE REWIND al cierre de temporada (local/global).
+- 🛟 Notificaciones con lógica de recuperación ante downtime.
 
-## Comandos principales
+## 🧩 Comandos principales
 
-- `/settings` Configuracion del servidor (admins).
-- `/profile` Perfil y estadisticas del usuario.
-- `/leaderboard` Rankings local/global.
-- `/streak` Ranking de rachas.
-- `/season` Info de temporada actual.
-- `/history` Historial de poles del usuario.
-- `/polehelp` Ayuda rapida dentro de Discord.
+- `/settings` · configuración del servidor (admins).
+- `/profile` · perfil y estadísticas de usuario.
+- `/leaderboard` · rankings local/global.
+- `/streak` · ranking de rachas.
+- `/season` · estado de temporada actual.
+- `/history` · historial de poles.
+- `/putometro` · contador global del putómetro.
+- `/polehelp` · ayuda rápida en Discord.
 
-## Modo debug (solo DEBUG=1)
+## 🛠️ Modo debug (`DEBUG=1`)
 
-Si `DEBUG=1`, se carga `cogs/debug.py` con herramientas admin:
+Se habilita el grupo `/debug` en `cogs/debug.py` con utilidades de administración y diagnóstico:
 
-- `/debug info`
-- `/debug diagnose`
-- `/debug test_migration`
-- `/debug compensate_downtime`
-- `/debug restore_streak`
-- `/debug restore_guild`
+- Inspección y diagnóstico: `info`, `diagnose`.
+- Simulación y pruebas: `pole_time`, `notify_test`, `simulate_pole`, `reset_date`, `test_migration`.
+- Recuperación operativa: `compensate_downtime`, `restore_streak`, `restore_guild`, `modify_user`.
 
-## Requisitos
+## 📦 Requisitos e instalación
 
-- Python 3.8+
-- `discord.py>=2.3.0`
-- `python-dotenv>=1.0.0`
-
-Instalacion:
+- Python 3.10+
+- Dependencias en `requirements.txt`
 
 ```bash
 python -m venv .venv
@@ -51,11 +46,10 @@ python -m venv .venv
 .venv\Scripts\activate
 # Linux/Mac
 source .venv/bin/activate
-
 pip install -r requirements.txt
 ```
 
-`.env` minimo:
+`.env` mínimo:
 
 ```env
 DISCORD_TOKEN=tu_token
@@ -64,31 +58,30 @@ DEBUG=0
 # DEBUG_ALLOWLIST=123456789012345678
 ```
 
-Iniciar:
+Arranque:
 
 ```bash
 python main.py
 ```
 
-## Base de datos y migraciones
+## 🗄️ Base de datos
 
 - SQLite en `data/pole_bot.db`.
-- Migraciones automaticas al iniciar.
-- Schema actual: `v7`.
-- Restauracion de rachas (solo global_users, sin puntos): `scripts/restore_streaks.py`.
+- Migraciones automáticas al iniciar.
+- Schema actual: `v8`.
+- Script de restauración de rachas: `scripts/restore_streaks.py`.
 
-No necesitas ejecutar scripts de inicializacion para arrancar el bot en un entorno nuevo.
+## 📚 Documentación
 
-## Documentacion
+- [Guía de deployment](DEPLOYMENT.md)
+- [Índice de documentación](docs/README.md)
+- [Reglas del juego](docs/RULES.md)
+- [Badges y rangos](docs/ACHIEVEMENTS.md)
+- [Internacionalización (i18n)](docs/I18N.md)
 
-- Guia de deploy: [DEPLOYMENT.md](DEPLOYMENT.md)
-- Indice de docs: [docs/README.md](docs/README.md)
-- Reglas de juego: [docs/RULES.md](docs/RULES.md)
-- Sistema de badges: [docs/ACHIEVEMENTS.md](docs/ACHIEVEMENTS.md)
-- Internacionalizacion: [docs/I18N.md](docs/I18N.md)
+## ✅ Validación rápida
 
-## Notas de operacion
-
-- El bot usa solo slash commands para usuarios finales.
-- Los comandos debug solo estan disponibles cuando `DEBUG=1` y el usuario esta en `DEBUG_ALLOWLIST`.
-- En cambio de año, el bot migra temporada automaticamente y puede emitir POLE REWIND.
+```bash
+python -m py_compile main.py
+python -m compileall cogs utils scripts
+```

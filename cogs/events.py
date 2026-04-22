@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 import logging
 from typing import Optional
-from utils.i18n import t
+from utils.i18n import t, resolve_guild_language, set_cached_guild_language
 
 # Logger
 log = logging.getLogger('EventsCog')
@@ -14,6 +14,16 @@ log = logging.getLogger('EventsCog')
 class EventsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.db = bot._db
+
+    async def _prime_guild_language(self, guild_id: int) -> None:
+        """Resolver/cachar idioma del servidor antes de responder con t()."""
+        try:
+            lang = await resolve_guild_language(guild_id, self.db)
+            set_cached_guild_language(guild_id, lang)
+        except Exception:
+            # Fallback silencioso a español cacheado.
+            set_cached_guild_language(guild_id, 'es')
 
     def _pick_welcome_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         """Seleccionar canal para mensaje de bienvenida con verificación de permisos."""
@@ -38,6 +48,8 @@ class EventsCog(commands.Cog):
 
     async def _send_onboarding_message(self, channel: discord.TextChannel, guild: discord.Guild):
         """Enviar mensaje inicial BILINGÜE explicando pasos de configuración."""
+        await self._prime_guild_language(guild.id)
+
         # Construir descripción bilingüe
         description_es = (
             t('onboarding.intro', guild.id) +
@@ -72,6 +84,8 @@ class EventsCog(commands.Cog):
         # Solo responder en canales de texto
         if not isinstance(channel, discord.TextChannel):
             return
+
+        await self._prime_guild_language(channel.guild.id)
         
         try:
             # Esperar un momento para que el canal esté completamente creado
@@ -88,6 +102,9 @@ class EventsCog(commands.Cog):
         Evento cuando se crea un nuevo hilo en el servidor
         """
         try:
+            if thread.guild:
+                await self._prime_guild_language(thread.guild.id)
+
             # Unirse al hilo primero (necesario para poder escribir)
             await thread.join()
             
@@ -110,6 +127,7 @@ class EventsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
         """Enviado cuando el bot entra por primera vez a un servidor."""
+        await self._prime_guild_language(guild.id)
         log.info(f"🎉 Bot añadido a nuevo servidor: {guild.name} (ID: {guild.id})")
         log.info(f"   Miembros: {guild.member_count} | Canales de texto: {len(guild.text_channels)}")
         
@@ -132,6 +150,9 @@ class EventsCog(commands.Cog):
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
         """Manejo de errores de comandos (traducidos)"""
+        if ctx.guild:
+            await self._prime_guild_language(ctx.guild.id)
+
         if isinstance(error, commands.MissingPermissions):
             await ctx.send(t('events.error.no_permissions', ctx.guild.id if ctx.guild else None))
         elif isinstance(error, commands.MissingRequiredArgument):
